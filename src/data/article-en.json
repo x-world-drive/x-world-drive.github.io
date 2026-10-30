@@ -1,0 +1,279 @@
+{
+  "lang": "en",
+  "title": "The Road to Real-Time: Low-Latency Inference for an Interactive World Model",
+  "description": "We optimized X-World 1.5's online GPU inference, codecs and request scheduling to raise the seven-view frame rate and shorten the delay from a control input to the updated frame.",
+  "updated": "2026-10-28",
+  "revision": 729,
+  "readingMinutes": 22,
+  "headings": [
+    {
+      "id": "videos",
+      "text": "Demo Videos",
+      "depth": 2
+    },
+    {
+      "id": "introduction",
+      "text": "Background",
+      "depth": 2
+    },
+    {
+      "id": "optimization-overview",
+      "text": "Optimization Overview",
+      "depth": 2
+    },
+    {
+      "id": "doxcnmMqpSzJZwlQ9nC2Rx5CCde",
+      "text": "Breakable CUDA Graph",
+      "depth": 2
+    },
+    {
+      "id": "doxcn8f9aZtq12f0VSMe4bEd4bc",
+      "text": "UCP Multi-GPU",
+      "depth": 2
+    },
+    {
+      "id": "doxcndBDDKWTYMm6rfQZw2onKWa",
+      "text": "Kernel-Level Optimization",
+      "depth": 2
+    },
+    {
+      "id": "doxcnSlrG6sDVdy5ynaYNUyrsOb",
+      "text": "Lowering Control Latency",
+      "depth": 2
+    },
+    {
+      "id": "doxcnmRld9LG73K2NpxM3KqDwNZ",
+      "text": "From 8-Frame to 2-Frame Feedback",
+      "depth": 3
+    },
+    {
+      "id": "doxcncUDcbGocwDlqGuEP971nhb",
+      "text": "Sustaining 12 FPS Under Two-Frame Feedback",
+      "depth": 3
+    },
+    {
+      "id": "doxcnZCkYLw3K8THMyP6LRRaQyh",
+      "text": "Eliminating Stalls During Continuous Interaction",
+      "depth": 3
+    },
+    {
+      "id": "doxcnOgFjrYvogG2l8hYFtRGITe",
+      "text": "Seven-View VAE Decoding",
+      "depth": 2
+    },
+    {
+      "id": "doxcnUfXlsZrhkvJ26n2Pko9kKd",
+      "text": "Miscellaneous and Network Optimization",
+      "depth": 2
+    },
+    {
+      "id": "doxcnXzNLiza49hn6YPJWRZP6Sd",
+      "text": "End-to-End Inference RSI",
+      "depth": 2
+    },
+    {
+      "id": "doxcnDLnTaHD2PKu93e4zGGvz2c",
+      "text": "Acknowledgments",
+      "depth": 2
+    }
+  ],
+  "videos": [
+    {
+      "id": "video-01",
+      "src": "media/b2d8090081102ec1d28a.mp4",
+      "poster": "media/b2d8090081102ec1d28a-poster.jpg",
+      "title": "Driving demo 1",
+      "label": "Live demo 1",
+      "kind": "driving",
+      "durationSeconds": 36.9,
+      "width": 1920,
+      "height": 1080
+    },
+    {
+      "id": "video-02",
+      "src": "media/c4e28f83b0ff29fcc88d.mp4",
+      "poster": "media/c4e28f83b0ff29fcc88d-poster.jpg",
+      "title": "Driving demo 2",
+      "label": "Live demo 2",
+      "kind": "driving",
+      "durationSeconds": 38.17,
+      "width": 1920,
+      "height": 1080
+    },
+    {
+      "id": "video-03",
+      "src": "media/fb3405176b261a04a183.mp4",
+      "poster": "media/fb3405176b261a04a183-poster.jpg",
+      "title": "Screen recording: U-turn at a clear intersection",
+      "label": "Recording: U-turn, clear",
+      "kind": "recording",
+      "durationSeconds": 32.75,
+      "width": 1638,
+      "height": 884
+    },
+    {
+      "id": "video-04",
+      "src": "media/42ed53c1a2574484b24e.mp4",
+      "poster": "media/42ed53c1a2574484b24e-poster.jpg",
+      "title": "Screen recording: U-turn at an overcast intersection",
+      "label": "Recording: U-turn, overcast",
+      "kind": "recording",
+      "durationSeconds": 22.23,
+      "width": 1638,
+      "height": 884
+    },
+    {
+      "id": "video-05",
+      "src": "media/c2200487fb4bd2c40d57.mp4",
+      "poster": "media/c2200487fb4bd2c40d57-poster.jpg",
+      "title": "Screen recording: Pulling away straight at an overcast intersection",
+      "label": "Recording: pull away straight",
+      "kind": "recording",
+      "durationSeconds": 28.7,
+      "width": 1638,
+      "height": 884
+    }
+  ],
+  "segments": [
+    {
+      "html": "<aside class=\"tldr-callout\" id=\"doxcn1p2Kpk8vCu1BihpHq9j3Ld\" aria-label=\"TL;DR\"><p id=\"doxcnyXF84CikzIqXXse9BgafJf\"><b>TL;DR</b>: X-World 1.5 generates and streams seven synchronized camera views (about 2.3 million pixels per frame across views, or 2.5× a single-view 720p stream). Running on 4 GPUs, online interactive inference sustains 12 FPS (the native frame rate ceiling of the training data) with a 426 ms p50 control-to-frame latency (excluding network), 73.7% lower than the unoptimized version, achieving state-of-the-art inference performance among comparable interactive world models.</p></aside>\n<p id=\"doxcnQNwvwDLWWTVNIOV8XlBMic\"><a href=\"https://arxiv.org/abs/2603.19979\" target=\"_blank\" rel=\"noopener noreferrer\">X-World 1.5</a> (hereafter X-World) is XPENG&#x27;s world model for autonomous driving simulation, continuously generating seven-camera surround video conditioned on historical frames, vehicle actions, and scene context. The model generates autoregressively chunk by chunk in latent space and reuses historical features through a rolling KV cache. Inside the DiT backbone, temporal attention models the time series within each camera view, while cross-view attention exchanges information across cameras at the same timestep using our camera positional encoding, PatchCaPE, to maintain cross-view spatial consistency. 3D objects, lanes, and road markings enter through a structured-condition branch, while traffic lights are handled by a dedicated branch.</p>\n\n<p id=\"doxcn4gK8rJIXCi8PTervhj1ufe\">In closed-loop simulation, X-World takes actions emitted by a driving policy and rolls out how the environment evolves under different driving decisions, supporting large-scale closed-loop evaluation and online reinforcement learning. Building on this capability, we added a real-time interactive driving mode: a developer drives with a steering wheel and pedals, and a vehicle kinematics model converts steering, throttle, and braking inputs into an ego trajectory fed into the world model. Human drivers frequently make sharp turns or hard stops that push the model outside its training distribution, making it immediately obvious whether the world model responds promptly and coherently.</p>\n\n<p id=\"doxcnVqtE4cT8JIHfgIqV6fZRKc\">Offline closed-loop simulation and standard video generation optimize primarily for throughput, where multi-job concurrency, batching, and techniques like our earlier <a href=\"https://arxiv.org/abs/2604.20289\" target=\"_blank\" rel=\"noopener noreferrer\">X-Cache</a> improve overall efficiency. Real-time driving imposes a stricter latency constraint: using the same model weights, visual quality, and hardware, the serving pipeline must sustain 12 FPS while reflecting new steering and braking inputs on screen as quickly as possible. High throughput does not imply low control latency, and even occasional tail-latency spikes translate directly into visible stutter.</p>\n\n<p id=\"doxcnxVlRv81o8cb3IPAYP360bP\">We initially considered streaming only the front camera to save VAE decoding compute and network bandwidth, but switched to streaming all seven views in full. During turns and lane changes, testers need to inspect the front, side, and rear cameras simultaneously to verify cross-view consistency. Across all seven views, each frame totals roughly 2.3 million pixels, or about 2.5× a single 720p (1280 × 720) view. Once a control input arrives, the DiT denoises the seven-view latents over multiple steps, the VAE decodes them into RGB frames, and all seven views are video-encoded, streamed over the network, and decoded in the browser (<a href=\"#doxcnXeb2Crk8hRAqHD1xaArQfb\">Figure 1</a>). Because all seven views are displayed in lockstep, a slowdown in any single view delays the entire frame set.</p>\n"
+    },
+    {
+      "figure": {
+        "id": "doxcnXeb2Crk8hRAqHD1xaArQfb",
+        "name": "fig01_architecture",
+        "src": "images/0a48dee06b619c3e958a.png",
+        "width": 3389,
+        "height": 1656,
+        "caption": "Figure 1. End-to-end inference pipeline for real-time interactive driving.",
+        "zoom": "Enlarge: "
+      }
+    },
+    {
+      "html": "\n<p id=\"doxcnnUOBexcZlNt3RujQqT3Iyc\">Note:</p>\n<ul><li id=\"doxcno0vbJrxM46XvyIXzpZrKMe\">All benchmarks below stream all seven camera views in full; frame rate is measured from frames received by the client during steady-state generation (excluding the initial warmup rounds).</li><li id=\"doxcnWrdXhUxw0qV1mWiHagRm3b\">First-frame receive latency is defined as the time from sending a control input to receiving the corresponding first frame, excluding network transit and browser decoding. We also optimize network transport in <a href=\"#doxcnUfXlsZrhkvJ26n2Pko9kKd\">Section 6</a>.</li></ul>\n\n<h2 id=\"optimization-overview\">Optimization Overview</h2>\n<div class=\"table-scroll\" role=\"region\" aria-label=\"Optimization Overview\" tabindex=\"0\"><table><thead><tr><th scope=\"col\"><p id=\"doxcnGHo82kVLefialvmI2iyDDd\">Cumulative Stage</p></th><th scope=\"col\"><p id=\"doxcnfSk9q0Xun8zeRkvy8PC9o7\">Key Changes</p></th><th scope=\"col\"><p id=\"doxcnBTXbxv6jDlMw1dTg2BuF7S\">Frame Rate (FPS)</p></th><th scope=\"col\"><p id=\"doxcnsHZd1z3i1DRYxSOEHIHuAf\">p50 Control Latency</p></th><th scope=\"col\"><p id=\"doxcnG09fcA3z2I3HWfzsrzt46g\">Latency Reduction (vs. UCP)</p></th></tr></thead><tbody><tr><td><p id=\"doxcnMZpiLqxNL6jE4NGrej3u2S\">Unoptimized baseline</p></td><td><p id=\"doxcnVpDgBE1AYULcAF9T10FVvh\">Two GPUs (no parallelism): DiT and VAE on one GPU each, both running in eager mode and returning 8 frames per pass</p></td><td><p id=\"doxcnn1r5wbblOQQeRnbkQu98Lb\">3.61 FPS</p></td><td><p id=\"doxcnrUYGBTP02vAthiOPx9HN8d\">5311 ms</p></td><td><p id=\"doxcnvlhQ5Sfhje8636Dp3DcEOb\">—</p></td></tr><tr><td><p id=\"doxcnQ24DH2OBL0wgyPEp5ReGef\">+ <a href=\"#doxcnmMqpSzJZwlQ9nC2Rx5CCde\">Section 1: BCG</a></p></td><td><p id=\"doxcnMYUZt14apGF5lxmOCG9Uzi\">Two GPUs (no parallelism): capture fixed-shape compute in CUDA Graphs; keep variable-length condition branches outside the graph in eager mode</p></td><td><p id=\"doxcnGw6F5XL1CKRtYIJabFjHCe\">7.42 FPS</p></td><td><p id=\"doxcnVZjPrHffzDIeV6GG5LYfCc\">2622 ms</p></td><td><p id=\"doxcna11XlrUwDd3Qgf6jWe3Gsf\">—</p></td></tr><tr><td><p id=\"doxcnbGUhNeXWTDDOk94lFqQaph\">+ <a href=\"#doxcn8f9aZtq12f0VSMe4bEd4bc\">Section 2: UCP</a></p></td><td><p id=\"doxcn0nWgwuWOBt6hP9OMEAKzzc\">Shard DiT spatial tokens across three GPUs; capture NCCL communication together with compute inside CUDA Graphs</p></td><td><p id=\"doxcnEf2h7GRykc7PeYb2KkcUHe\">11.29 FPS</p></td><td><p id=\"doxcnhWPyWqLC8ipxZX3Y8NLlZD\">1622 ms</p></td><td><p id=\"doxcnvpYWUocqVHEZE3CZu5Rife\">Baseline</p></td></tr><tr><td><p id=\"doxcn96CUYGJ7AWdBmiP5g3j5Kf\">+ <a href=\"#doxcndBDDKWTYMm6rfQZw2onKWa\">Section 3: Kernel Optimization</a></p></td><td><p id=\"doxcnW7CVsPDtRCXowN1QDvuQ12\">Fuse RMSNorm + RoPE, adaLN + residual, PatchCaPE, and other operators, cutting DiT layer latency from 3075 µs to 1007 µs</p></td><td><p id=\"doxcnfLDAmySIQuVi1kosDUNveh\">11.78 FPS</p></td><td><p id=\"doxcnKizNlglMmNXP7Yf7Jechme\">1430 ms</p></td><td><p id=\"doxcnLfjQnuMChQXYqd3VdBnJTe\">11.8%</p></td></tr><tr><td><p id=\"doxcnfMlcKz0vnWsStJcX3KyTte\">+ <a href=\"#doxcnSlrG6sDVdy5ynaYNUyrsOb\">Section 4: Lowering Control Latency</a></p></td><td><p id=\"doxcnHCsqHnD2GGWaMqTKZHN0Nh\">Switch to two-frame feedback with full-chunk joint resampling and overlap generation with output; seven-view VAE decoding is not yet optimized and bottlenecks FPS</p></td><td><p id=\"doxcnJyXtm7uUQsyBWde43r5w1g\">5.58 FPS</p></td><td><p id=\"doxcnyXhRzmAGXDtZkVIE7rtt8f\">1275 ms</p></td><td><p id=\"doxcnDqVwvRT5GUO7T0uLEfbZ9g\">21.4%</p></td></tr><tr><td><p id=\"doxcnv82mEL9J8ISKdQe8gmfspf\">+ <a href=\"#doxcnOgFjrYvogG2l8hYFtRGITe\">Section 5: Seven-View VAE</a></p></td><td><p id=\"doxcnRF0hduifsC3nBRp5WJhqgg\">End-to-end channels-last, on-demand frame decoding, and concurrent per-view CUDA Graphs, cutting per-request VAE time from 345.2 ms to 141.8 ms</p></td><td><p id=\"doxcn7sRNEVaTO8cd0iROJEujTe\">12.01 FPS</p></td><td><p id=\"doxcnivQkag54wN3e8pn3DEjg7w\">457 ms</p></td><td><p id=\"doxcnAl9WUZsBQLJmEITFyMHA4c\">71.8%</p></td></tr><tr><td><p id=\"doxcnoabQYMaGuaIG0la7Rdyxwe\">+ <a href=\"#doxcnUfXlsZrhkvJ26n2Pko9kKd\">Section 6: Misc. &amp; Network</a></p></td><td><p id=\"doxcnR9xxbZ3722dgeTxZ7nhSab\">CPU-side traffic-light mask pooling, integer category IDs for structured conditions, deferred HUD geometry, and zero-copy frame forwarding</p></td><td><p id=\"doxcngy24wOCoEFEgE29zxKv8Wj\"><b>12.01 FPS</b></p></td><td><p id=\"doxcnInY1WopLT4kx0jZMYkCJnn\"><b>426 ms</b></p></td><td><p id=\"doxcno9uzx5HoWZ7mwiwMIXFjkK\"><b>73.7%</b></p></td></tr></tbody></table></div>\n<h2 id=\"doxcnmMqpSzJZwlQ9nC2Rx5CCde\">1. Reducing Kernel Launch Overhead with Breakable CUDA Graph</h2>\n<p id=\"doxcnVMdcyRsdMqbg9TAebfzvce\">In our initial DiT traces, many GPU kernels ran for only a few microseconds, separated by wide idle gaps. Generating a single 8-frame chunk triggered 97265 <code>cudaLaunchKernel</code> calls, leaving GPU utilization (GPU busy) at just 34%. The GPU frequently finished a kernel faster than the CPU could dispatch the next one (<a href=\"#doxcnaMNHWwEIilyBHddp4QNfch\">Figure 2a</a>).</p>\n\n<p id=\"doxcn6RIjmQ0oBZh5M8yEfYnyKm\">CUDA Graphs eliminate per-kernel host launch overhead, but require static tensor shapes, whereas the token counts for structured scene conditions and traffic lights vary dynamically with the driving scene. Across 34 warmup chunks, the structured-condition branch alone took 21 distinct sequence lengths. Capturing a separate graph for every length combination inflates warmup time and memory footprint while yielding poor graph reuse. We also tried padding lane tokens to a fixed length, but padding altered attention reductions enough to break bitwise output equivalence.</p>\n\n<p id=\"doxcnTRjYfdwVtk3qpAkqKHv5Rh\">To handle dynamic branches without sacrificing graph coverage, we adopted SGLang&#x27;s <a href=\"https://www.lmsys.org/blog/2026-08-17-advanced-cuda-graph/\" target=\"_blank\" rel=\"noopener noreferrer\">Breakable CUDA Graph (BCG)</a>, keeping the variable-length condition branches outside the graph in eager mode. During capture, whenever execution reaches a dynamic branch, we end the current graph segment, run the dynamic operations eagerly, and resume graph capture afterward; each interruption point is a graph break. At replay time, the runtime alternates between replaying captured graph segments and executing eager breaks in the exact same order, with all segments sharing a single CUDA memory pool.</p>\n\n<p id=\"doxcnEVj2Dzyy1tgOqcC4i9BGkb\">Crucially, varying the condition token count does not change the output shape of these cross-attention branches. Once camera resolution and chunk length are fixed, the number of video query tokens is static, and cross-attention produces an output tensor matching the query shape that the next graph segment can consume directly. Memory addresses across the boundary must stay fixed as well: during capture, the subsequent graph segment binds to the device pointer of the break&#x27;s output buffer, and during replay the eager break writes its fresh output into that same persistent buffer before the next segment launches (<a href=\"#doxcnVuEhBERMx6PsS2gW4bNN6d\">Figure 3</a>). Because the buffer&#x27;s lifetime is tied to the graph, replay never reads freed memory.</p>\n\n<p id=\"doxcnl1x3sKuCqNC39EcHVAauVc\">While <code>torch.compile</code>&#x27;s Piecewise CUDA Graph (PCG) also partitions execution around graph breaks, adopting it would have required custom operator registration for several of our kernels and re-verifying multi-GPU communication ordering under the compiler. The SGLang team documented similar friction and observed additional Python guard-check and dispatcher overhead from PCG during prefill benchmarks. We therefore chose BCG, preserving our existing custom kernels and communication path without compiler overhead.</p>\n"
+    },
+    {
+      "figure": {
+        "id": "doxcnaMNHWwEIilyBHddp4QNfch",
+        "name": "fig_bcg_trace",
+        "src": "images/7bb9144707c97b1ab8d6.png",
+        "width": 2178,
+        "height": 450,
+        "caption": "Figure 2. GPU trace of one DiT layer under eager and BCG.",
+        "zoom": "Enlarge: "
+      }
+    },
+    {
+      "figure": {
+        "id": "doxcnVuEhBERMx6PsS2gW4bNN6d",
+        "name": "fig_bcg_replay",
+        "src": "images/78fedd3be7246f0cb1cc.png",
+        "width": 2860,
+        "height": 976,
+        "caption": "Figure 3. Capture and replay at a BCG break.",
+        "zoom": "Enlarge: "
+      }
+    },
+    {
+      "html": "\n\n<p id=\"doxcnvYAexLlkOrPWPm5UVvy4oh\">Each X-World DiT layer contains 4 breaks: one traffic-light attention break for each of the three camera groups (front, side, and rear) and one for structured-condition attention. Across the four denoising steps, execution crosses 480 breaks and partitions the model into 481 graph segments; the KV-cache finalization pass adds another 121 segments, totaling 602 graph launches per chunk.</p>\n\n<p id=\"doxcnq4nPR5A9DRbfkB2jpayuog\">Kernels inside breaks are still launched individually from the CPU. Of the 20819 <code>cudaLaunchKernel</code> calls remaining per chunk, roughly 98% originate inside these breaks: a camera group with visible traffic lights launches about 116 kernels per layer, structured-condition attention launches about 29, and a camera group without visible traffic lights simply zeros its output in 1 kernel. Enabling BCG raised GPU busy from 34% to 92.8%, cut steady-state per-chunk DiT p50 latency from 2231 ms to 1080 ms, dropped p50 first-frame receive latency from 5311 ms to 2622 ms, and lifted the frame rate from 3.61 FPS to 7.42 FPS.</p>\n<h2 id=\"doxcn8f9aZtq12f0VSMe4bEd4bc\">2. Scaling DiT Denoising Across Three GPUs with UCP</h2>\n<p id=\"doxcnaAbK20hhpBm1brZGsq8agd\">BCG removes host-side launch stalls, but the FLOPs per denoising step remain unchanged. To reduce wall-clock denoising time, we use Ulysses Context Parallelism (UCP) to shard each DiT forward pass across three GPUs, dedicating the fourth GPU to VAE encoding and decoding.</p>\n\n<p id=\"doxcncZjcXQIVmj9R82tf0RoLEc\">UCP partitions the seven-view spatial tokens across cameras. Because the front, side, and rear cameras operate at different resolutions and token counts, each rank can hold a different number of tokens. Temporal self-attention and cross-view attention perform all-to-all exchanges in the layouts each operator requires, while the text and scene-condition branches run purely locally on each rank&#x27;s query shard.</p>\n\n<p id=\"doxcn8LpCNRAsgcL4kfp16kLryh\">To keep BCG working under UCP, we pre-allocate persistent send and receive buffers, enforce a deterministic collective ordering across ranks, and invoke NCCL collectives directly on the active capture stream. Collectives and compute kernels are captured and replayed together inside the graph segments, while variable-length condition branches remain in eager breaks. Scaling DiT across three GPUs increased the frame rate from 7.42 FPS to 11.29 FPS and cut p50 first-frame receive latency from 2622 ms to 1622 ms.</p>\n\n<p id=\"doxcnw4uutwHbn8rKFJn81iTJ5c\">With the multi-GPU topology fixed, we turned to per-GPU kernel optimization. To ensure operator fusion and scheduling changes never degrade generation quality, we fixed the driving scene, action trajectory, and sampling noise, using the seven-view frames and latents from a continuous three-GPU eager rollout as our reference baseline and verifying every subsequent optimization against it.</p>\n<h2 id=\"doxcndBDDKWTYMm6rfQZw2onKWa\">3. Kernel-Level Optimization</h2>\n<p id=\"doxcnzkBRhgmzsCfNRC9XGll6Fd\">Even with BCG and UCP enabled, elementwise operations and memory copies still accounted for roughly 61% of total per-layer kernel time. Most of these kernels touched the same data back to back: one kernel writes an intermediate tensor to HBM, and the very next kernel reads it right back. We fused adjacent operators and folded layout permutations into their output writes so each kernel emits data directly in the layout expected downstream, eliminating redundant HBM round-trips and kernel launches.</p>\n\n<p id=\"doxcnFhSIQgiHoWEBIdn2P4chke\">First, the most frequent fusion target is RMSNorm followed by RoPE on Q and K. We combined both into a single Triton kernel that normalizes and applies rotary embeddings entirely in registers before writing back once. Because the baseline RoPE rotates in FP64 before casting back to BF16, naively switching to FP32 alters outputs near rounding boundaries. Our fused kernel preserves the original reduction order and intermediate BF16 rounding while computing in FP32 by default: whenever the entire interval within the FP32 error bound rounds to the same BF16 value, it writes the FP32 result directly, falling back to an in-kernel FP64 recomputation only for elements straddling a rounding boundary. This reduced a single Q/K norm-plus-RoPE pass from 135.6 µs to 17.5 µs.</p>\n\n<p id=\"doxcncty016rZzKBP2tRVLh15Yg\">Each layer also repeatedly executes modulated, gated adaptive LayerNorm (adaLN) and residual updates. We hoisted the adaLN parameter projections for all layers ahead of the layer loop, and fused normalization, scale-shift modulation, gated residual addition, and row permutation into a single kernel launch that preserves the exact BF16 rounding and reduction order in registers, cutting per-call latency from 16.9 µs to 6.3 µs.</p>\n\n<p id=\"doxcnAVsWv7l1CudH0ZIxcKdbuf\">Because Q, K, and V projections share the same input activation, concatenating their weights lets a single GEMM compute all three, at the cost of producing strided output views. Materializing contiguous copies of those views would wipe out the GEMM savings, so we updated the downstream RMSNorm, RoPE, and communication kernels to consume strided views directly. Similarly, UCP communication previously packed tensors into contiguous buffers, called NCCL, and transposed layouts after receipt; we folded the layout permutation directly into the cross-GPU write so data lands in the exact layout the receiver needs. Merging the QKV projection alone actually increased layer latency from 2435 µs to 2522 µs due to strided access, but combining it with the fused cross-GPU write brought layer latency down to 2167 µs (<a href=\"#doxcn1YyjCv23MT65aB3GYnpAyg\">Figure 5</a>).</p>\n\n<p id=\"doxcn7InyPcBjFBkmHJZ9fjnMAe\">In cross-view attention, the baseline PatchCaPE implementation processed camera groups one by one, applying geometric projections and 2D RoPE over horizontal and vertical patch coordinates before concatenating the results. This spawned dozens of tiny kernels and intermediate tensors. We fused the transform across the entire sequence into a single Triton kernel that writes directly in the layout expected by attention, cutting a single KV transform from 191.0 µs to 4.4 µs.</p>\n\n<p id=\"doxcnNcMitiTWkv8ngsKGdIStjc\">For structured-condition attention, we fused the separate exponentiation, row reduction, and normalization kernels into a single masked softmax kernel, reducing latency from 61.1 µs to 9.5 µs. Traffic-light attention previously invoked masked SDPA four times per layer across frame-condition groups and now runs in a single launch. To pull the traffic-light branch into the CUDA Graph, we pad the traffic-light buffer to 16 slots while restricting the K/V projections and attention computation to valid lights. We also moved the Q projection, output projection, and residual addition of the structured-condition branch into the graph, leaving only the variable-length attention kernel inside the eager break. <a href=\"#doxcnJPXsgk6G1cg0A61ANVUVId\">Figure 4</a> compares the latency of our primary fused kernels against the original PyTorch baseline.</p>\n\n"
+    },
+    {
+      "figure": {
+        "id": "doxcnJPXsgk6G1cg0A61ANVUVId",
+        "name": "figure4_operator_benchmarks",
+        "src": "images/93db61939746414e5078.png",
+        "width": 3050,
+        "height": 938,
+        "caption": "Figure 4. Single-call latency of fused operators vs. PyTorch baseline.",
+        "zoom": "Enlarge: "
+      }
+    },
+    {
+      "html": "\n<p id=\"doxcnDMOs1exSk2IoEjgQmtD61c\">Stacking these kernel optimizations on top of three-GPU BCG + UCP (<a href=\"#doxcn1YyjCv23MT65aB3GYnpAyg\">Figure 5</a>) cut average DiT layer latency from 3075 µs to 1007 µs (a 67.3% reduction), reduced executed kernels per layer from 510 to 55, and brought direct CPU-side <code>cudaLaunchKernel</code> calls down to roughly 510 per chunk per GPU. End-to-end frame rate increased from 11.29 FPS to 11.78 FPS, and p50 first-frame receive latency dropped from 1622 ms to 1430 ms.</p>\n"
+    },
+    {
+      "figure": {
+        "id": "doxcn1YyjCv23MT65aB3GYnpAyg",
+        "name": "fig_layers",
+        "src": "images/8222d6d88a239a3acbe6.png",
+        "width": 2613,
+        "height": 1189,
+        "caption": "Figure 5. DiT layer time across operator fusion steps.",
+        "zoom": "Enlarge: "
+      }
+    },
+    {
+      "html": "\n<h2 id=\"doxcnSlrG6sDVdy5ynaYNUyrsOb\">4. Lowering Control Latency</h2>\n<p id=\"doxcnjpCWiG69KeDEWqqDmDWNgb\">Even after kernel optimization, returning 8 frames per pass left p50 first-frame receive latency at 1430 ms. Only part of that delay is compute: because each pass latches control inputs when sampling begins, any steering or braking input arriving mid-generation must wait for the next pass to enter the model. Making controls take effect promptly requires shortening the interval between action updates.</p>\n<h3 id=\"doxcnmRld9LG73K2NpxM3KqDwNZ\">From 8-Frame to 2-Frame Feedback</h3>\n<p id=\"doxcnwCW227oPO5IfmTXNtQdC0f\">In X-World, each DiT pass jointly denoises two latents, L₁ and L₂, over four steps. With 4× temporal compression in the VAE, L₁ decodes to frames 1–4 and L₂ decodes to frames 5–8, so each chunk spans 8 video frames. Within a chunk, L₁ and L₂ attend to each other bidirectionally; across chunks, temporal context flows through the rolling KV cache.</p>\n\n<p id=\"doxcnpj9XZr4snMZGJPVOXJvPAd\">Offline closed-loop simulation returns just one frame per pass: after receiving each rendered frame, the driving policy replans its trajectory, and X-World re-denoises the current chunk from the same initial noise under the updated trajectory before decoding that single target frame. This allows frame-by-frame action updates, but generating 8 consecutive frames requires denoising the entire chunk 8 times. Conversely, our initial real-time driving pipeline returned all 8 frames from a single denoising pass: each chunk was denoised only once, locking all 8 frames to the same action trajectory so controls updated only once every 667 ms at 12 FPS. Shrinking the chunk size to a single latent is not viable either: because the model was trained on two-latent chunks, running single-latent inference causes visual quality to blur progressively over time.</p>\n\n<p id=\"doxcndPUoVHpxsRhNOY6KFAoxHh\">We therefore keep the two-latent chunk structure and four-step denoising schedule, but ingest new actions across multiple resampling passes within the same chunk (<a href=\"#doxcnAYQ31IvKMhvCiZKpboUaec\">Figure 6</a>). Under 4-frame feedback, each chunk runs two passes, returning L₁ on Pass 1 and L₂ on Pass 2, which halves the action update interval to 333 ms. Because X-World conditions on speed, curvature, and other kinematic signals at per-frame granularity, the 4 frames inside a single latent can also be conditioned on actions captured at different moments. Two-frame feedback exploits this per-frame conditioning to read new controls every 2 frames (about 167 ms) across 4 passes per chunk: Passes 1 and 2 return frames 1–2 and 3–4 of L₁, Passes 3 and 4 return frames 5–6 and 7–8 of L₂, and only Pass 4 commits the finalized latents to the historical KV cache.</p>\n\n<p id=\"doxcnAJQypXscS555pido6id43b\">Frames already streamed to the client cannot be revoked, yet L₁ and L₂ interact bidirectionally within the chunk, so updating actions on later frames also perturbs earlier ones. To maintain temporal continuity across passes, two-frame feedback uses the same full-chunk joint resampling strategy as per-frame closed-loop simulation: every pass starts from the same initial noise and jointly denoises L₁ and L₂ at identical noise levels t, preserving the historical actions on already-emitted frames while applying the latest control inputs to the remaining frames. Meanwhile, the VAE decodes both passes of a given latent from the same historical decoder cache, advancing the cache only after the latent&#x27;s second frame pair is finalized. Nor can Passes 3 and 4 simply clamp L₁ to the clean latent (t = 0) produced in Pass 2: the model was never trained on inputs pairing a noise-free L₁ with a noisy L₂. In our tests, clamping L₁ at t = 0 degraded PSNR across the three camera groups by 0.20–0.34 dB and noticeably increased object flicker; moreover, because L₁ still participates in bidirectional attention in every layer, freezing it saves zero DiT compute. With full-chunk joint resampling, replaying recorded trajectories across 4 real-world scenes produces outputs bitwise identical to per-frame closed-loop simulation; in live interactive driving, PSNR stays within 0.08 dB of per-frame simulation, while abnormal vehicle and pedestrian flicker increases by only about 3% and 6%, respectively, concentrated at frame 3 of each chunk.</p>\n\n<p id=\"doxcnw1SyNipOOJuJkSGtG0Auvd\">This resampling granularity is configurable per workload: online reinforcement learning uses single-frame feedback (8 passes per chunk) to faithfully model frame-by-frame closed-loop decision making, whereas interactive driving uses two-frame feedback to cap each chunk at 4 passes.</p>\n"
+    },
+    {
+      "figure": {
+        "id": "doxcnAYQ31IvKMhvCiZKpboUaec",
+        "name": "fig_latent_feedback_simple",
+        "src": "images/b0697cab1463b92261da.png",
+        "width": 1568,
+        "height": 818,
+        "caption": "Figure 6. Sampling passes within one chunk under 8-, 4-, and 2-frame feedback.",
+        "zoom": "Enlarge: "
+      }
+    },
+    {
+      "html": "\n<h3 id=\"doxcncUDcbGocwDlqGuEP971nhb\">Sustaining 12 FPS Under Two-Frame Feedback</h3>\n<p id=\"doxcn2hl1ctlGZpc3WjYbtXpqoe\">Under two-frame feedback, each chunk runs DiT denoising, VAE decoding, and video encoding four times as often as the 8-frame return mode, which is also why we chose two-frame feedback over the lower-latency but more compute-intensive single-frame feedback. Sustaining 12 FPS without building a request backlog requires completing each two-frame pass within 167 ms on average; otherwise, fresh inputs queue behind earlier passes. We first strip redundant work within each chunk: KV finalize runs only once at the end of the chunk (a single forward pass after both L₁ and L₂ are finalized to write the historical KV cache), and the VAE decodes only the frames needed for the current pass, decoding just the first two frames on a latent&#x27;s first pass and all four frames on its second pass to emit the final two.</p>\n\n<p id=\"doxcn9By2XxXAFvRLQh7JWcRvCf\">Beyond cutting per-pass compute, we pipeline generation and output across consecutive passes. Because the DiT conditions on historical KV caches written from denoised latents rather than decoded pixels, the next DiT pass can launch as soon as the current pass commits its latent state, overlapping with the current pass&#x27;s VAE decoding, video encoding, and network streaming. At the end of a chunk, KV finalize also runs in parallel with VAE decoding: both read the same finalized latent buffer without modifying it (<a href=\"#doxcn43wz9boL5NeegyHZBODfH8\">Figure 7</a>).</p>\n"
+    },
+    {
+      "figure": {
+        "id": "doxcn43wz9boL5NeegyHZBODfH8",
+        "name": "fig_feedback_pipeline",
+        "src": "images/df5b9b51080c43b497ae.png",
+        "width": 3127,
+        "height": 1466,
+        "caption": "Figure 7. Pipeline timeline when releasing after decode (a) vs. after state commit (b).",
+        "zoom": "Enlarge: "
+      }
+    },
+    {
+      "html": "\n<p id=\"doxcnJX6fxKrLgR5lHF5LdLe6mf\">Making the pipeline overlap in <a href=\"#doxcn43wz9boL5NeegyHZBODfH8\">Figure 7</a>(b) work in practice required eliminating hidden host and CUDA stream synchronizations. Profiling revealed several implicit stalls that we removed: the DiT worker previously called <code>torch.cuda.synchronize()</code> before exporting latents, blocking the host thread, and now records a CUDA event for the downstream stream to wait on asynchronously; the synchronization before publishing frame buffers across processes was previously queued on the default stream behind the active compute pass and now runs on a dedicated stream; and condition uploads now use asynchronous host-to-device copies from reusable pinned memory while completion-ack tensors are allocated directly on the GPU, preventing synchronous copies from stalling input preparation.</p>\n\n<p id=\"doxcnygqpUYTJJXf4iWHFI0ZeGe\">Once the next pass can be staged while the current pass is still outputting, request commit timing directly impacts responsiveness. Because action inputs are locked when a request is committed, committing too early forces any control input arriving while the DiT is still busy to wait an extra pass. We therefore stage at most one upcoming request and latch the latest control input just before the DiT goes idle; disabling this just-in-time latch drops the frame rate to 11.82 FPS and adds 7 ms to p50 first-frame receive latency.</p>\n\n<p id=\"doxcn1yLuYdrtxBlwOuRv9oeGKf\">At the end of the output pipeline, decoded frames are video-encoded and streamed frame by frame. On the CPU, SVT-AV1 runs in real-time low-delay mode with constant bitrate (CBR) and zero lookahead; all seven camera views are encoded in parallel with bitrates proportional to their pixel counts, emitted together per timestamp, and decoded in the browser via WebCodecs. During steady-state generation, encoding a two-frame, seven-view batch takes a median of 28.5 ms.</p>\n\n<p id=\"doxcnk3AVJHdYE9YLFw1urLX3Rf\">Together, these scheduling and pipeline changes bring DiT denoising, state commit, and video encoding well within the 167 ms per-pass budget, reducing p50 first-frame receive latency from 1430 ms to 1275 ms. However, because every 8-frame chunk now triggers four seven-view VAE decodes, single-GPU VAE decoding becomes the new throughput bottleneck, temporarily pulling the frame rate down to 5.58 FPS. <a href=\"#doxcnOgFjrYvogG2l8hYFtRGITe\">Section 5</a> resolves this bottleneck.</p>\n<h3 id=\"doxcnZCkYLw3K8THMyP6LRRaQyh\">Eliminating Stalls During Continuous Interaction</h3>\n<p id=\"doxcnG7cFxtLS0ZEFQHya8aOc0d\">Aside from average per-pass latency, long interactive sessions occasionally suffered multi-hundred-millisecond freezes. Instrumenting Python&#x27;s garbage collector revealed single GC pauses lasting up to 674 ms mid-session; whenever any DiT rank pauses for GC, the remaining ranks stall at the next NCCL collective.</p>\n\n<p id=\"doxcnMc2taZzuPIUyN5MAfRIPcf\">These pauses occurred because generational GC repeatedly traversed hundreds of thousands of long-lived objects allocated during model loading and CUDA Graph warmup. We now run a manual collection right after warmup, before any user session starts, and call <code>gc.freeze()</code> to move all permanent objects into the permanent generation, so subsequent collections skip them while still reclaiming short-lived session objects. This reduced the maximum GC pause to 18.7 ms. Across 148 steady-state requests per configuration, gateway request latency dropped from 863 ms to 410 ms at p99 and from 993 ms to 520 ms at max (<a href=\"#doxcntET8ArP0SyQI4UlgwJ1Y1e\">Figure 8</a>).</p>\n"
+    },
+    {
+      "figure": {
+        "id": "doxcntET8ArP0SyQI4UlgwJ1Y1e",
+        "name": "fig_gc_tail",
+        "src": "images/c6320f169f0702c33df8.png",
+        "width": 1240,
+        "height": 827,
+        "caption": "Figure 8. Gateway request latency distribution before and after gc.freeze().",
+        "zoom": "Enlarge: "
+      }
+    },
+    {
+      "html": "\n<h2 id=\"doxcnOgFjrYvogG2l8hYFtRGITe\">5. Seven-View VAE Decoding Optimization</h2>\n<p id=\"doxcnOKT0atLwFA3IOAEaqqaQxh\">Under two-frame feedback, the dedicated VAE GPU must complete a seven-view, two-frame decode request every 167 ms on average. Before optimization, each request consumed 345.2 ms of GPU time, throttling the end-to-end frame rate to 5.58 FPS. Rather than reallocating GPUs away from the three-GPU DiT, we optimized seven-view VAE decoding on the single VAE GPU.</p>\n\n<p id=\"doxcnVjESboWswT0G3z2D4ijYAh\">The baseline decoder repeatedly transposed tensor layouts around 3D convolutions and allocated temporary buffers for intermediate activations, an overhead multiplied across seven high-resolution camera views. We converted the decoder to keep activations in channels-last layout end-to-end, converting convolution weights once at initialization. Before each convolution, we fused RMSNorm, SiLU, temporal cache concatenation, and spatial/temporal padding into a single kernel that writes the next convolution&#x27;s input buffer directly; after each convolution, bias addition and residual connections are fused as well.</p>\n\n<p id=\"doxcnoC3xgpAgZLgpRvFvlD6ggg\">Because the temporal VAE decoder is causal, the first pass on each latent only needs to return the first two frames and can skip decoding the last two. However, slicing the temporal dimension or switching to channels-last can cause cuDNN heuristics to pick different convolution algorithms with different floating-point accumulation orders. We benchmarked and selected cuDNN execution plans layer by layer to match the full four-frame decode (requiring identical pre-rounding pixel outputs and decoder caches), and fell back to full-length convolution followed by slicing on the few layers without an exact matching plan.</p>\n\n<p id=\"doxcn29W5Uln86bMvqDHR2OdDRe\">Since the seven camera views maintain independent decoder caches with no cross-view data dependencies, we captured separate CUDA Graphs per view for two-frame decoding, four-frame decoding, last-frame re-encoding, and cache preparation, replaying all seven views concurrently across dedicated CUDA streams while preserving strict temporal ordering within each view. Finally, we replaced several bottleneck convolutions with faster custom convolution kernels.</p>\n\n<p id=\"doxcnem1C0K6T2G8WcIXSkOdy0f\">Combined (<a href=\"#doxcnBJryqfESBdLARTsBuZEQuc\">Figure 9</a>), these optimizations reduced VAE GPU time per request from 345.2 ms to 141.8 ms and cut executed kernels from 8241 to 2241, staying well within the 167 ms budget. End-to-end throughput recovered to 12.01 FPS, and p50 first-frame receive latency dropped to 457 ms.</p>\n"
+    },
+    {
+      "figure": {
+        "id": "doxcnBJryqfESBdLARTsBuZEQuc",
+        "name": "fig_codec",
+        "src": "images/9edfa0ff0b71d4f1519d.png",
+        "width": 1911,
+        "height": 647,
+        "caption": "Figure 9. Seven-view VAE decode time across optimization steps.",
+        "zoom": "Enlarge: "
+      }
+    },
+    {
+      "html": "\n<h2 id=\"doxcnUfXlsZrhkvJ26n2Pko9kKd\">6. Miscellaneous and Network Optimization</h2>\n<p id=\"doxcnFytMsmDP3jIq7k7xozL29e\">With throughput back at 12 FPS, we used live human test drives to hunt down the remaining sources of control latency. Now that DiT and VAE execution on the GPU had been compressed, the remaining overhead sat in CPU pre- and post-processing around denoising and in request commit timing.</p>\n\n<p id=\"doxcnmI0kV67sTL4dnmeQlq3ZOg\">Prior to denoising, the largest CPU bottleneck was preparing the traffic-light condition: the host previously rasterized traffic lights onto full-resolution camera canvases, copied those images to the GPU, and ran adaptive max pooling down to the latent grid. Because the model only consumes the pooled binary 0/1 mask and everything outside the traffic-light bounding boxes is zero, we replaced full-resolution rasterization and GPU pooling by iterating only over the latent-grid windows overlapped by bounding boxes on the CPU, directly generating and uploading a compact <code>uint8</code> mask at latent resolution. This cut pre-denoise preparation p50 to 11.5 ms and, combined with tuning the just-in-time state-commit lead window from <a href=\"#doxcnSlrG6sDVdy5ynaYNUyrsOb\">Section 4</a>, reduced server-side p50 latency from 392 ms to 380 ms.</p>\n\n<p id=\"doxcny297zQSkjoxrP6VLxdKhRg\">We then eliminated three remaining host-side overheads: passing integer category IDs for structured conditions so the DiT looks up embeddings directly on the GPU, deferring HUD geometry computation until after the denoising request is dispatched, and forwarding decoded VAE frames to the gateway without an extra memory copy. Server-side latency fell further to 345 ms at p50 and from 410 ms to 401 ms at p99, bringing p50 first-frame receive latency down from 457 ms to 426 ms.</p>\n\n<p id=\"doxcnfn3f7Cu0wILwKzZxoMW0Jd\">In production use, developers drive from a browser over the public internet while receiving seven synchronized AV1 streams. Over a link with a 158 ms round-trip time (RTT), steady-state latency from sending a control input to receiving all seven views is 613 ms at p50 and 707 ms at p99; measured inside the browser, p50 key-to-paint latency is 614 ms, with arriving video frames decoded and rendered onto the canvas within about 20 ms.</p>\n\n<p id=\"doxcnebZEgsy3ccvmn3O7H3so2c\">During live test drives, we also noticed severe stutter during the first 3 seconds right after connecting and pressing the first key: per-frame network transit time hit 669 ms at p50 and peaked at 1576 ms, delivering only 2–10 FPS to the browser before flushing the queued backlog in bursts (<a href=\"#doxcnyx000SjsLZeTiCCZUzYGxe\">Figure 10</a>). The culprit was TCP slow start on the freshly opened WebSocket connection: before the TCP congestion window had ramped up to match seven 12 FPS video streams, encoded frames piled up in the server&#x27;s send buffer.</p>\n\n<p id=\"doxcn4pH0VJgGOx8nBo5YGMFRib\">To eliminate this cold-start bottleneck, we warm up the connection before unlocking controls: as soon as the page connects, the server streams 4 seconds of random payload at the target video bitrate while the browser acknowledges each chunk, expanding the TCP send window before the first driving input is sent. With connection warm-up enabled, p50 per-frame transit time during the first 3 seconds drops to 91 ms, latency from the first control input to the first received frame falls from 610 ms to 433 ms, and p50 control-to-frame latency over the first 3 seconds drops from 1389 ms to 629 ms.</p>\n"
+    },
+    {
+      "figure": {
+        "id": "doxcnyx000SjsLZeTiCCZUzYGxe",
+        "name": "fig_network_warmup",
+        "src": "images/765f556d65c3b3a335b2.png",
+        "width": 1837,
+        "height": 804,
+        "caption": "Figure 10. Frame rate and per-frame transit time in the first 10 seconds with and without warm-up.",
+        "zoom": "Enlarge: "
+      }
+    },
+    {
+      "html": "\n<h2 id=\"doxcnXzNLiza49hn6YPJWRZP6Sd\">Next Steps: End-to-End Inference RSI</h2>\n<p id=\"doxcnLWUutu9I5IktByuiQZ1PJb\">Stepping back, every optimization in this post followed the same underlying loop: inspect GPU traces and runtime logs, pinpoint bottlenecks across kernel launches, operator fusion, multi-GPU communication, or pipeline scheduling, form a hypothesis, modify the implementation, and verify both latency and visual fidelity. When an idea failed, we rolled it back; when multiple candidates looked promising, we evaluated them in parallel. Viewed structurally, the entire effort is a tree search that continually expands and prunes branches.</p>\n\n<p id=\"doxcn9CmWQxL7HNibkSSOu1tylc\">This structured search loop makes inference optimization a natural fit for automated Recursive Self-Improvement (RSI). Efforts such as NVIDIA&#x27;s <a href=\"https://nvlabs.github.io/kda/blog/2026-09-27-kda-for-kda/\" target=\"_blank\" rel=\"noopener noreferrer\">KDA</a> have already demonstrated that when paired with correctness checks, benchmarks, and profilers, an agent can iteratively generate, test, and refine GPU kernels, matching or surpassing human engineers on several operators. In fact, during our own optimization push, several subtle bugs were diagnosed and fixed autonomously by an agent: for instance, the Python GC stall in <a href=\"#doxcnSlrG6sDVdy5ynaYNUyrsOb\">Section 4</a> was isolated by an agent correlating logs across multiple system layers and ruling out hypotheses one by one. Recently, several RSI systems have also attempted to optimize entire inference frameworks end to end (rather than isolated kernels), claiming wins over mainstream open-source engines on specific benchmarks. Still, we remain skeptical of how well those headline numbers hold up in production workloads.</p>\n\n<p id=\"doxcnw2YZZB4Os3bX79JOJ9m1pc\">An agent will relentlessly optimize whatever objective we define. When a benchmark or verifier has blind spots, however, the agent can easily cherry-pick or exploit loopholes, producing numbers that look impressive on paper but mean little in practice. OpenAI&#x27;s practice in <a href=\"https://openai.com/index/jalapeno-first-results/\" target=\"_blank\" rel=\"noopener noreferrer\">developing the Jalapeño chip</a> offers a compelling blueprint: human engineers first architect the system into a clean programming target with well-defined boundaries, predictable behavior, and airtight verification, and then turn AI loose to explore schedules and implementations within those guardrails.</p>\n\n<p id=\"doxcnIcOJ8I3l3luoUF82vauJcf\">We aim to bring the same philosophy to end-to-end inference optimization by wiring GPU traces, runtime logs, latency benchmarks, and bitwise/perceptual correctness suites directly into the agent&#x27;s workspace. Because model context windows remain finite, we also want to distill hard-won lessons from each search branch into persistent long-term memory, allowing the agent to build on prior experiments rather than rediscovering the same pitfalls from scratch. Under explicit objectives and verification constraints, this forms a self-improving optimization loop that compounds experience over time. A single iteration may yield only a 1% or 2% speedup, as long as that 1% is real and verifiable.</p>\n<p id=\"doxcndQWVPOJt3cbW8xbyVmcBPd\">Throughout this process, human engineering taste remains essential. Deciding which bottlenecks are worth tackling, how to scope the search space, which metrics to trust, and when to distrust a result that looks too good to be true cannot be solved simply by scaling up search compute. That said, these judgments need not remain an exclusively human craft forever. As model capabilities and toolchains mature, agents will take on an increasing share of the diagnostic intuition that today relies on seasoned systems engineers. Rather than relying on the heroics of a few &quot;performance wizards,&quot; our goal is to codify that engineering intuition into reusable, verifiable, and continuously improving agent workflows. Ultimately, what deserves sustained investment is not just any single point optimization, but iterating on the optimization engine itself: only by continually improving how our systems surface bottlenecks, formulate hypotheses, run experiments, and verify results can infrastructure iteration truly keep pace with model iteration.</p>\n<h2 id=\"doxcnDLnTaHD2PKu93e4zGGvz2c\">Acknowledgments</h2>\n<p id=\"doxcn5QyfcWAIXFnJvEDcgq0v11\">We thank XPENG&#x27;s AI Infra team and World Model team for their support.</p>\n<p id=\"doxcnZMc3GVDwMWsB96HR61Dnsc\">AI Infra team:</p>\n<ul><li id=\"doxcn7qY839AJNU7O1t50zjMcns\">Contributor: Yixiao Zeng</li><li id=\"doxcnB5oyC72J5um3xoiRdGo5Gf\">Advisor: Bo Tian</li></ul>\n<p id=\"doxcnkC46vsmyrXHzGV0M1UXp8n\">World Model team:</p>\n<ul><li id=\"doxcnpDGRs33X2EOctUeC4R8Lbf\">Advisors: Chaoda Zheng, Yuqi Zhang, Langming Zhang, Jinhao Deng, Boyang Wang, Yu Zhang</li></ul>\n<p id=\"doxcnrDULVHN7AsrE12FjpT0jaf\">We thank the SGLang team for their <a href=\"https://www.lmsys.org/blog/2026-08-17-advanced-cuda-graph/\" target=\"_blank\" rel=\"noopener noreferrer\">Breakable CUDA Graph blog post</a>.</p>"
+    }
+  ]
+}

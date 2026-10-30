@@ -1,0 +1,118 @@
+---
+import data from '../../data/figures/gc_tail.json';
+import type { Lang } from '../../lib/i18n';
+
+interface Props { id: string; lang: Lang }
+const { id, lang } = Astro.props;
+const text = {
+  en: {
+    before: 'before', after: 'gc.freeze()',
+    pause: (a: number, b: number) => `longest GC pause ${a} → ${b} ms`,
+    x: 'gateway request time (ms)', y: 'fraction of requests ≥ x',
+    hint: '',
+    caption: 'Figure 8. Gateway request latency distribution before and after gc.freeze().',
+    aria: 'Complementary distribution of gateway request time before and after freezing the heap',
+  },
+  zh: {
+    before: '修改前', after: 'gc.freeze()',
+    pause: (a: number, b: number) => `GC 最长暂停 ${a} → ${b} ms`,
+    x: '网关请求耗时（ms）', y: '耗时 ≥ x 的请求比例',
+    hint: '',
+    caption: '图 8. gc.freeze() 前后的网关请求耗时分布。',
+    aria: '冻结常驻对象前后网关请求耗时的互补累积分布',
+  },
+}[lang];
+
+const X0 = 64, X1 = 744, Y0 = 18, Y1 = 238, XMIN = 300, XMAX = 1050, YMIN = 1 / 200;
+const sx = (ms: number) => X0 + (X1 - X0) * (ms - XMIN) / (XMAX - XMIN);
+const sy = (f: number) => Y0 + (Y1 - Y0) * Math.log10(f) / Math.log10(YMIN);
+function path(values: number[]) {
+  const n = values.length;
+  let d = `M ${sx(values[0]).toFixed(1)} ${sy(1).toFixed(1)}`;
+  values.forEach((v, i) => {
+    const f = (n - i) / n;
+    d += ` H ${sx(v).toFixed(1)} V ${sy(f).toFixed(1)}`;
+  });
+  return d + ` H ${sx(values[n - 1]).toFixed(1)}`;
+}
+const arms = [
+  { key: 'gc_nofreeze', label: text.before, color: '#eb6834' },
+  { key: 'gc_freeze', label: text.after, color: '#2a78d6' },
+].map(a => ({ ...a, d: path((data as Record<string, { series: number[] }>)[a.key].series) }));
+const xticks = [300, 400, 500, 600, 700, 800, 900, 1000];
+const yticks = [1, 0.1, 0.01].map(f => ({ y: sy(f), label: f === 1 ? '1' : f === 0.1 ? '0.1' : '0.01' }));
+---
+<figure class="article-figure ifig" id={id}>
+  <gc-tail>
+    <div class="ifig-bar">
+      <p class="ifig-stats">{text.pause(Math.round(data.gc_nofreeze.max_pause_ms), data.gc_freeze.max_pause_ms)}</p>
+    </div>
+    <svg viewBox="0 0 760 276" role="img" aria-label={text.aria}>
+      {xticks.map(t => <g class="tick"><line x1={sx(t)} x2={sx(t)} y1={Y0} y2={Y1} /><text x={sx(t)} y={Y1 + 14} text-anchor="middle">{t}</text></g>)}
+      {yticks.map(t => <g class="tick"><line x1={X0} x2={X1} y1={t.y} y2={t.y} /><text x={X0 - 6} y={t.y + 3} text-anchor="end">{t.label}</text></g>)}
+      <text class="axis-label" x={(X0 + X1) / 2} y="272" text-anchor="middle">{text.x}</text>
+      <text class="axis-label" transform={`translate(12 ${(Y0 + Y1) / 2}) rotate(-90)`} text-anchor="middle">{text.y}</text>
+      {arms.map(a => <path d={a.d} stroke={a.color} class="curve" />)}
+      <line class="cursor" x1={X0} x2={X0} y1={Y0} y2={Y1} visibility="hidden" />
+      <rect class="hit" x={X0} y={Y0} width={X1 - X0} height={Y1 - Y0} tabindex="0" />
+    </svg>
+    <div class="ifig-foot">
+      {arms.map(a => <span class="key"><i style={`--key: ${a.color}`}></i>{a.label}</span>)}
+      <output class="ifig-readout" aria-live="polite">{text.hint}</output>
+    </div>
+    <script type="application/json" set:html={JSON.stringify({ lang, hint: text.hint, before: data.gc_nofreeze.series, after: data.gc_freeze.series, geometry: { X0, X1, XMIN, XMAX } })}></script>
+  </gc-tail>
+  <figcaption>{text.caption}</figcaption>
+</figure>
+
+<style>
+  gc-tail { display: block; }
+  .curve { fill: none; stroke-width: 1.8; stroke-linejoin: round; }
+  .cursor { stroke: var(--ink); stroke-width: 1; stroke-dasharray: 3 3; }
+  .hit { fill: transparent; cursor: crosshair; outline: none; }
+  .hit:focus-visible { stroke: var(--blue); }
+</style>
+
+<script>
+  import { tooltip } from '../../scripts/tooltip';
+
+  interface Data { lang: 'en' | 'zh'; hint: string; before: number[]; after: number[]; geometry: { X0: number; X1: number; XMIN: number; XMAX: number } }
+  const say = {
+    en: (ms: number, a: number, b: number, n: number) => `≥ ${ms} ms: before ${a}/${n}, gc.freeze() ${b}/${n}`,
+    zh: (ms: number, a: number, b: number, n: number) => `≥ ${ms} ms：修改前 ${a}/${n}，gc.freeze() ${b}/${n}`,
+  };
+
+  class GcTail extends HTMLElement {
+    connectedCallback() {
+      const data: Data = JSON.parse(this.querySelector('script[type="application/json"]')!.textContent!);
+      const { X0, X1, XMIN, XMAX } = data.geometry;
+      const hit = this.querySelector<SVGRectElement>('.hit')!;
+      const cursor = this.querySelector<SVGLineElement>('.cursor')!;
+      const tip = tooltip(this);
+      let ms = 500;
+      const show = (event?: PointerEvent) => {
+        const x = X0 + (X1 - X0) * (ms - XMIN) / (XMAX - XMIN);
+        cursor.setAttribute('x1', String(x));
+        cursor.setAttribute('x2', String(x));
+        cursor.setAttribute('visibility', 'visible');
+        const slower = (series: number[]) => series.filter(v => v >= ms).length;
+        tip.show(say[data.lang](ms, slower(data.before), slower(data.after), data.before.length), event);
+      };
+      hit.addEventListener('pointermove', event => {
+        const box = hit.getBoundingClientRect();
+        ms = Math.round(XMIN + (XMAX - XMIN) * (event.clientX - box.left) / box.width);
+        show(event);
+      });
+      hit.addEventListener('keydown', event => {
+        if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return;
+        event.preventDefault();
+        ms = Math.min(XMAX, Math.max(XMIN, ms + (event.key === 'ArrowRight' ? 10 : -10)));
+        show();
+      });
+      const reset = () => { cursor.setAttribute('visibility', 'hidden'); tip.hide(); };
+      hit.addEventListener('pointerleave', reset);
+      hit.addEventListener('blur', reset);
+    }
+  }
+  customElements.define('gc-tail', GcTail);
+</script>

@@ -1,0 +1,65 @@
+---
+import ops from '../../data/figures/operators.json';
+import type { Lang } from '../../lib/i18n';
+
+interface Props { id: string; lang: Lang }
+const { id, lang } = Astro.props;
+const text = {
+  en: {
+    time: 'Time per call', speedup: 'Speedup', native: 'PyTorch baseline', fused: 'Fused kernel',
+    hint: '',
+    caption: 'Figure 4. Single-call latency of fused operators vs. PyTorch baseline.',
+    aria: 'Time and speedup of five fused operators against PyTorch',
+  },
+  zh: {
+    time: '单次耗时', speedup: '加速比', native: 'PyTorch 基准', fused: '融合 kernel',
+    hint: '',
+    caption: '图 4. 融合算子与 PyTorch 基准的单次耗时对比。',
+    aria: '五个融合算子相对 PyTorch 的耗时与加速比',
+  },
+}[lang];
+
+const X0 = 170, X1 = 660, ROW = 40, TOP = 18;
+const maxUs = 200;
+const us = (v: number) => (X1 - X0) * v / maxUs;
+const rows = ops.map((op, i) => ({ ...op, y: TOP + i * ROW, speedup: op.native_us / op.fused_us }));
+const height = TOP + rows.length * ROW + 16;
+const timeTicks = [0, 50, 100, 150, 200];
+---
+<figure class="article-figure ifig" id={id}>
+  <operator-bench>
+    <div class="ifig-bar">
+      <p class="ifig-stats"><span class="swatch" style="--key: #b9c0ca"></span>{text.native}<span class="swatch" style="--key: #2a78d6"></span>{text.fused}</p>
+    </div>
+    <svg viewBox={`0 0 760 ${height}`} role="img" aria-label={text.aria}>
+      {timeTicks.map(t => <g class="tick"><line x1={X0 + us(t)} x2={X0 + us(t)} y1={TOP - 6} y2={height - 14} /><text x={X0 + us(t)} y={height - 2} text-anchor="middle">{t} µs</text></g>)}
+      <text class="col" x="758" y={TOP - 6} text-anchor="end">{text.speedup}</text>
+      {rows.map(r => (
+        <g class="op">
+          <rect class="hit" x="0" y={r.y - 6} width="760" height={ROW} />
+          <text class="name" x={X0 - 10} y={r.y + 16} text-anchor="end">{r.name}</text>
+          <rect class="native" x={X0} y={r.y} width={us(r.native_us)} height="11" />
+          <rect class="fused" x={X0} y={r.y + 13} width={Math.max(us(r.fused_us), 1.5)} height="11" />
+          <text class="val" x={X0 + us(r.native_us) + 5} y={r.y + 9}>{r.native_us}</text>
+          <text class="val" x={X0 + us(r.fused_us) + 5} y={r.y + 22}>{r.fused_us}</text>
+          <text class="speedup" x="758" y={r.y + 16} text-anchor="end">{r.speedup.toFixed(1)}×</text>
+        </g>
+      ))}
+    </svg>
+  </operator-bench>
+  <figcaption>{text.caption}</figcaption>
+</figure>
+
+<style>
+  operator-bench { display: block; }
+  .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin: 0 6px 0 14px; vertical-align: -1px; background: var(--key); }
+  .name { font-size: 11.5px; fill: var(--ink); }
+  .val { font-size: 10px; fill: var(--muted); font-variant-numeric: tabular-nums; }
+  .col { font-size: 9.5px; fill: #9aa1ab; }
+  .speedup { font-size: 12px; font-weight: 600; fill: var(--ink); font-variant-numeric: tabular-nums; }
+  rect { transform-box: fill-box; transform-origin: left center; }
+  rect.native { fill: #b9c0ca; }
+  rect.fused { fill: #2a78d6; }
+  .hit { fill: transparent; }
+  .op:hover .hit { fill: rgb(37 99 235 / 4%); }
+</style>

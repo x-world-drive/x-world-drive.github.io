@@ -1,0 +1,1 @@
+[{"stage":"row4","busy_ms":345.2,"kernels":8241},{"stage":"vae1","busy_ms":332.8,"kernels":8245},{"stage":"vae2","busy_ms":149.3,"kernels":2569},{"stage":"row5","busy_ms":141.8,"kernels":2241}]

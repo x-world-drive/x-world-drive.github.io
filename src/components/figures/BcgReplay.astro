@@ -1,0 +1,141 @@
+---
+import type { Lang } from '../../lib/i18n';
+
+interface Props { id: string; lang: Lang }
+const { id, lang } = Astro.props;
+const text = {
+  en: {
+    boxes: ['Segment 0', 'Break', 'Output', 'Segment 1'], subs: ['', 'eager', '', ''],
+    write: 'write', copy: 'write', same: 'same address',
+    tokens: ['N tokens', 'M tokens'],
+    tips: {
+      'cap-seg0': 'Record graph segment 0',
+      'cap-brk': 'Eager attention on N tokens outside graph',
+      'cap-buf': 'Write to fixed-address buffer',
+      'cap-seg1': 'Record graph segment 1 (bound to buffer address)',
+      'cap-tok': 'N condition tokens during capture',
+      'rep-seg0': 'Replay graph segment 0',
+      'rep-brk': 'Eager attention on M tokens outside graph',
+      'rep-buf': 'Write in place to the same buffer address',
+      'rep-seg1': 'Replay graph segment 1 (reads same address)',
+      'rep-tok': 'M condition tokens during replay',
+      link: 'Output tensor shape and buffer address stay fixed',
+    },
+    caption: 'Figure 3. Capture and replay at a BCG break.',
+    aria: 'Capture and replay at one BCG break: each row runs graph segment 0, an eager break over N or M condition tokens, a fixed-address output buffer, and graph segment 1',
+  },
+  zh: {
+    boxes: ['Segment 0', 'Break', '输出', 'Segment 1'], subs: ['', 'eager', '', ''],
+    write: '写入', copy: '写回', same: '同一地址',
+    tokens: ['N 个 token', 'M 个 token'],
+    tips: {
+      'cap-seg0': '录制图前段',
+      'cap-brk': '图外 eager 计算 N 个条件 token',
+      'cap-buf': '写入固定地址缓冲区',
+      'cap-seg1': '录制图后段（绑定该缓冲区地址）',
+      'cap-tok': '录制时传入 N 个条件 token',
+      'rep-seg0': '重放图前段',
+      'rep-brk': '图外 eager 计算 M 个条件 token',
+      'rep-buf': '原地写回同一缓冲区地址',
+      'rep-seg1': '重放图后段（直接读取该地址）',
+      'rep-tok': '重放时传入 M 个条件 token',
+      link: '输出张量形状与缓冲区地址保持不变',
+    },
+    caption: '图 3. BCG 在 break 处的 capture 与 replay。',
+    aria: '一个 BCG break 的 capture 与 replay：两行依次经过 graph segment 0、对 N 或 M 个条件 token 做 eager 计算的 break、地址固定的输出缓冲区和 graph segment 1',
+  },
+}[lang];
+
+const CELL = 9, GAP = 3, H = 40;
+const BOX = [{ x: 72, w: 118 }, { x: 250, w: 150 }, { x: 460, w: 118 }, { x: 638, w: 118 }];
+const PARTS = ['seg0', 'brk', 'buf', 'seg1'];
+const mid = (i: number) => BOX[i].x + BOX[i].w / 2;
+const squares = (n: number) => Array.from({ length: n }, (_, i) => +(mid(1) - (n * (CELL + GAP) - GAP) / 2 + i * (CELL + GAP)).toFixed(1));
+const rows = [
+  { key: 'cap', label: 'Capture', tokens: text.tokens[0], n: 5, y: 58, arrow: text.write },
+  { key: 'rep', label: 'Replay', tokens: text.tokens[1], n: 8, y: 178, arrow: text.copy },
+];
+const LINK = { x: mid(2), y1: rows[0].y + H + 21, y2: rows[1].y - 5 };
+const height = rows[1].y + H + 22;
+---
+<figure class="article-figure ifig" id={id}>
+  <bcg-replay>
+    <svg viewBox={`0 0 760 ${height}`} role="img" aria-label={text.aria}>
+      <defs>
+        {['head', 'eager'].map(kind => (
+          <marker id={`${id}-${kind}`} class={kind} viewBox="0 0 8 8" refX="8" refY="4" markerWidth="7" markerHeight="7" markerUnits="userSpaceOnUse" orient="auto"><path d="M0 0L8 4L0 8z" /></marker>
+        ))}
+      </defs>
+      {rows.map((r, k) => (
+        <g class="row" data-row={r.key}>
+          {BOX.map((b, i) => (
+            <g data-step={k * 4 + i}>
+              {i === 0 && <text class="row-label" x="0" y={r.y + H / 2 + 4}>{r.label}</text>}
+              {i > 0 && <line class={i === 2 ? 'arrow eager' : 'arrow'} x1={BOX[i - 1].x + BOX[i - 1].w} x2={b.x - 1} y1={r.y + H / 2} y2={r.y + H / 2} marker-end={`url(#${id}-${i === 2 ? 'eager' : 'head'})`} />}
+              {i === 2 && <text class="arrow-label" x={(BOX[1].x + BOX[1].w + b.x) / 2} y={r.y + H / 2 - 7} text-anchor="middle">{r.arrow}</text>}
+              {i === 1 && (
+                <g data-tip={`${r.key}-tok`}>
+                  <rect class="hit" x={mid(1) - 60} y={r.y - 46} width="120" height="26" />
+                  <text class="count" x={mid(1)} y={r.y - 34} text-anchor="middle">{r.tokens}</text>
+                  {squares(r.n).map(x => <rect class="tok" x={x} y={r.y - 28} width={CELL} height={CELL} rx="1.5" />)}
+                </g>
+              )}
+              {i === 1 && <line class="arrow" x1={mid(1)} x2={mid(1)} y1={r.y - 20} y2={r.y - 1} marker-end={`url(#${id}-head)`} />}
+              <g class={`box ${PARTS[i]}`} data-tip={`${r.key}-${PARTS[i]}`}>
+                <rect x={b.x} y={r.y} width={b.w} height={H} rx="3" />
+                <text x={mid(i)} y={r.y + H / 2 + 4} text-anchor="middle">{text.boxes[i]}</text>
+              </g>
+              <text class="sub" x={mid(i)} y={r.y + H + 14} text-anchor="middle">{text.subs[i]}</text>
+            </g>
+          ))}
+        </g>
+      ))}
+      <g class="link" data-step="8" data-tip="link">
+        <rect class="hit" x={LINK.x - 8} y={LINK.y1} width="92" height={LINK.y2 - LINK.y1} />
+        <line x1={LINK.x} x2={LINK.x} y1={LINK.y1} y2={LINK.y2} />
+        <text x={LINK.x + 7} y={(LINK.y1 + LINK.y2) / 2 + 4}>{text.same}</text>
+      </g>
+    </svg>
+    <div class="ifig-foot"><output class="ifig-readout" aria-live="polite"></output></div>
+    <script type="application/json" set:html={JSON.stringify(text.tips)}></script>
+  </bcg-replay>
+  <figcaption>{text.caption}</figcaption>
+</figure>
+
+<style>
+  bcg-replay { display: block; }
+  .row-label { font-size: 12px; font-weight: 600; fill: var(--ink); }
+  .box rect { stroke-width: 1.4; }
+  .box text { font-size: 12px; fill: var(--ink); }
+  .seg0 rect, .seg1 rect { fill: rgb(42 120 214 / 8%); stroke: #2a78d6; }
+  .brk rect { fill: rgb(235 104 52 / 8%); stroke: #eb6834; }
+  .buf rect { fill: rgb(185 192 202 / 22%); stroke: var(--muted); }
+  .sub { font-size: 10px; fill: #9aa1ab; }
+  .arrow { stroke: var(--muted); stroke-width: 1.2; }
+  .arrow.eager { stroke: #eb6834; }
+  marker.head path { fill: var(--muted); }
+  marker.eager path { fill: #eb6834; }
+  .arrow-label { font-size: 10.5px; fill: #eb6834; }
+  .tok { fill: rgb(235 104 52 / 22%); stroke: #eb6834; stroke-width: 1; }
+  .count { font-size: 10px; fill: var(--muted); }
+  .link line { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 3; }
+  .link text { font-size: 10px; fill: var(--muted); }
+  .hit { fill: transparent; }
+</style>
+
+<script>
+  import { tooltip } from '../../scripts/tooltip';
+
+  class BcgReplay extends HTMLElement {
+    connectedCallback() {
+      const tips: Record<string, string> = JSON.parse(this.querySelector('script[type="application/json"]')!.textContent!);
+      const tip = tooltip(this);
+      const say = (key: string) => tips[key];
+      this.querySelectorAll<SVGGElement>('[data-tip]').forEach(el => {
+        el.addEventListener('pointermove', event => tip.show(say(el.dataset.tip!), event));
+        el.addEventListener('pointerleave', () => tip.hide());
+      });
+    }
+  }
+  customElements.define('bcg-replay', BcgReplay);
+</script>

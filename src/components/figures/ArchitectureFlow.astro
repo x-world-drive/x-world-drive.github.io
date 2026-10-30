@@ -1,0 +1,267 @@
+---
+import type { Lang } from '../../lib/i18n';
+import { asset } from '../../lib/paths';
+
+interface Props { id: string; lang: Lang }
+const { id, lang } = Astro.props;
+const text = {
+  en: {
+    client: 'Client', server: 'Server', gpus: '4 GPUs', controls: 'Controls', display: 'Decode + display',
+    driver: 'Session driver', vehicle: 'Vehicle model', scene: 'Scene provider', generation: 'Generation',
+    encoder: 'Encoder', context: 'Initial context', temporal: 'Temporal attention', crossview: 'Cross-view attention',
+    ditGpus: 'GPUs 0–2', kv: 'History KV', vae: 'VAE decode', latents: 'Latents', frames: 'Frames',
+    shared: 'Shared decoder', av1: 'AV1 encode', link: '7 streams, 12 FPS',
+    tips: {
+      controls: 'Steering and pedals, read every 2 frames (167 ms)',
+      display: 'WebCodecs decodes and displays 7 views in sync',
+      vehicle: 'Kinematic model converting controls to ego trajectory',
+      scene: 'Lanes, objects, and traffic lights around ego pose',
+      encoder: 'Encodes initial frames once, then pre-encodes request conditions',
+      context: 'Initial frames and text prompt',
+      dit: '3-GPU UCP; 2 latents per chunk, 4 denoising steps',
+      temporal: 'Per-view temporal attention',
+      crossview: 'Cross-camera attention with PatchCaPE pose encoding',
+      kv: 'Rolling KV cache across chunks',
+      latents: '1 latent per view (4 frames)',
+      vae: 'Shared 7-view decoder, 2 frames per request',
+      frames: '7 camera views',
+      av1: 'CPU SVT-AV1 low-delay encoding, 7 streams',
+      link: '7 AV1 streams over WebSocket',
+    },
+    caption: 'Figure 1. End-to-end inference pipeline for real-time interactive driving.',
+    aria: 'Client controls go to the server, where a vehicle model, an encoder, a three-GPU DiT, and a shared VAE decoder generate seven views that return as AV1 streams',
+  },
+  zh: {
+    client: '客户端', server: '服务器', gpus: '4 张 GPU', controls: '操作输入', display: '解码显示',
+    driver: '会话驱动', vehicle: '车辆模型', scene: '场景条件', generation: '生成',
+    encoder: '编码器', context: '初始上下文', temporal: '时序 attention', crossview: '跨视角 attention',
+    ditGpus: 'GPU 0–2', kv: '历史 KV cache', vae: 'VAE 解码', latents: 'latent', frames: '画面',
+    shared: '共享解码器', av1: 'AV1 编码', link: '七路视频流，12 FPS',
+    tips: {
+      controls: '方向盘与踏板，每 2 帧（167 ms）读入一次',
+      display: 'WebCodecs 解码七路视频并同步显示',
+      vehicle: '运动学模型，将转向与踏板转为自车轨迹',
+      scene: '按自车位姿裁剪车道线、障碍物和红绿灯',
+      encoder: '首轮编码初始画面，后续请求预编码条件',
+      context: '初始画面与文本提示',
+      dit: '三卡 UCP 并行，每 chunk 两个 latent、四步去噪',
+      temporal: '单视角内的时序 attention',
+      crossview: '跨相机特征交互，PatchCaPE 编码外参',
+      kv: '跨 chunk 滚动复用历史帧 KV',
+      latents: '每视角 1 个 latent（对应 4 帧）',
+      vae: '七路共享解码器，每次解码 2 帧',
+      frames: '七路相机画面',
+      av1: 'CPU SVT-AV1 低延迟编码，七路并发',
+      link: 'WebSocket 传输七路 AV1 码流',
+    },
+    caption: '图 1. 实时交互驾驶的端到端推理链路。',
+    aria: '客户端的操作送到服务器，经车辆模型、编码器、三卡 DiT 和共享 VAE 解码器生成七路画面，再以 AV1 视频流返回',
+  },
+}[lang];
+
+const ORANGE = '#e8692f', BLUE = '#2a6fd6', GREEN = '#2e8a64', MUTED = '#6b7280';
+const img = (name: string) => asset(`figures/fig1/${name}.jpg`);
+const client = [
+  { n: 'c0', x: 25, y: 256, w: 40, h: 32 }, { n: 'c1', x: 69, y: 261, w: 40, h: 22.5 }, { n: 'c2', x: 113, y: 256, w: 40, h: 32 },
+  { n: 'c3', x: 25, y: 296, w: 128, h: 71.6 },
+  { n: 'c4', x: 25, y: 376, w: 40, h: 32 }, { n: 'c5', x: 69, y: 381, w: 40, h: 22.5 }, { n: 'c6', x: 113, y: 376, w: 40, h: 32 },
+];
+const ROWS = [147, 186, 225, 264, 303, 342, 381];
+const frames = ROWS.map((y, i) => {
+  const wide = i < 2 || i === 6;
+  return { n: `f${i}`, y, w: wide ? 46 : 33, h: wide ? 25.4 : 26.2 };
+});
+const marker = (color: string) => `url(#${id}-${color.slice(1)})`;
+---
+<figure class="article-figure ifig" id={id}>
+  <architecture-flow>
+    <svg viewBox="0 0 1000 486" role="img" aria-label={text.aria}>
+      <defs>
+        {[ORANGE, BLUE, GREEN, MUTED].map(color => (
+          <marker id={`${id}-${color.slice(1)}`} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" markerUnits="userSpaceOnUse" orient="auto-start-reverse">
+            <path d="M0,1 L10,5 L0,9 z" fill={color} />
+          </marker>
+        ))}
+        <symbol id={`${id}-lat`} viewBox="0 0 18 15">
+          <rect x="0.5" y="0.5" width="17" height="14" fill="#d6e4f8" stroke={BLUE} />
+          <path d="M6.2,0.5 V14.5 M11.8,0.5 V14.5 M0.5,7.5 H17.5" stroke="white" stroke-width="1.4" />
+        </symbol>
+      </defs>
+
+      <text class="title" x="10" y="21">{text.client}</text>
+      <text class="title" x="212" y="21">{text.server}</text>
+      <text class="muted big" x="990" y="21" text-anchor="end">{text.gpus}</text>
+      <rect class="panel" x="8" y="34" width="162" height="440" />
+      <rect class="panel server" x="208" y="34" width="778" height="440" />
+
+      <g class="node" data-k="controls">
+        <rect class="box" x="20" y="88" width="138" height="100" />
+        <circle cx="58" cy="127" r="15" fill="none" stroke="#4b5059" stroke-width="2.2" />
+        <circle cx="58" cy="127" r="2.6" fill="#4b5059" />
+        <path d="M43,127 H55 M61,127 H73 M58,130 V142" stroke="#4b5059" stroke-width="2.2" />
+        <path d="M95,107 V118" stroke="#4b5059" stroke-width="2" />
+        <rect x="84" y="118" width="22" height="16" rx="2" fill="#4b5059" />
+        <path d="M86,123 H104 M86,127 H104 M86,131 H104" stroke="white" stroke-width="0.9" />
+        <path d="M125,104 V112" stroke="#4b5059" stroke-width="2" />
+        <rect x="119" y="112" width="13" height="27" rx="2" fill="#4b5059" />
+        <path d="M121,118 H130 M121,123 H130 M121,128 H130 M121,133 H130" stroke="white" stroke-width="0.9" />
+        <text class="label" x="89" y="174" text-anchor="middle">{text.controls}</text>
+      </g>
+      <path class="wire" d="M89,224 V191" stroke={MUTED} marker-end={marker(MUTED)} />
+      <g class="node" data-k="display">
+        <rect class="box" x="20" y="224" width="138" height="218" />
+        <text class="label" x="89" y="246" text-anchor="middle">{text.display}</text>
+        {client.map(t => <image href={img(t.n)} x={t.x} y={t.y} width={t.w} height={t.h} preserveAspectRatio="xMidYMid slice" />)}
+      </g>
+
+      <rect class="panel inner" x="230" y="52" width="128" height="256" />
+      <text class="head" x="294" y="74" text-anchor="middle">{text.driver}</text>
+      <line class="sep" x1="230" x2="358" y1="85" y2="85" />
+      <g class="node" data-k="vehicle">
+        <rect class="box orange" x="241" y="96" width="106" height="96" />
+        <text class="label strong small" x="294" y="125" text-anchor="middle">{text.vehicle}</text>
+        <path d="M260,175 L275,174 L291,170 L318,157" fill="none" stroke={ORANGE} stroke-width="1.6" marker-end={marker(ORANGE)} />
+        {[[260, 175], [275, 174], [291, 170]].map(([x, y]) => <circle cx={x} cy={y} r="2" fill="white" stroke={ORANGE} stroke-width="1.2" />)}
+      </g>
+      <path class="wire" d="M294,193 V207" stroke={ORANGE} marker-start={marker(ORANGE)} marker-end={marker(ORANGE)} />
+      <g class="node" data-k="scene">
+        <rect class="box gray" x="241" y="208" width="106" height="88" />
+        <path d="M252,266 L263,218 M273,266 L284,218 M294,266 L305,218" stroke="#7f8590" stroke-width="1.3" />
+        <rect x="261" y="240" width="9" height="13" rx="2" fill="#8d939c" />
+        <rect x="282" y="228" width="9" height="13" rx="2" fill="#8d939c" />
+        <rect x="318" y="216" width="12" height="30" rx="2" fill="white" stroke="#7f8590" />
+        <circle cx="324" cy="223" r="2.6" fill="#c9cdd3" /><circle cx="324" cy="231" r="2.6" fill="#c9cdd3" /><circle cx="324" cy="239" r="2.6" fill={GREEN} />
+        <path d="M324,246 V262" stroke="#7f8590" stroke-width="1.3" />
+        <text class="muted" x="294" y="284" text-anchor="middle">{text.scene}</text>
+      </g>
+
+      <rect class="panel gen" x="397" y="52" width="384" height="290" />
+      <text class="head" x="409" y="74">{text.generation}</text>
+      <line class="sep" x1="397" x2="781" y1="85" y2="85" />
+      <g class="node" data-k="encoder">
+        <rect class="box orange" x="425" y="96" width="116" height="96" />
+        <text class="label strong big" x="483" y="128" text-anchor="middle">{text.encoder}</text>
+        <text class="muted" x="483" y="174" text-anchor="middle">GPU 3</text>
+      </g>
+      <path class="wire" d="M483,225 V194" stroke={MUTED} stroke-dasharray="4 3" marker-end={marker(MUTED)} />
+      <g class="node" data-k="context">
+        <rect class="box gray" x="425" y="225" width="116" height="90" />
+        <text class="muted" x="483" y="244" text-anchor="middle">{text.context}</text>
+        <rect x="445" y="256" width="42" height="31" fill="white" stroke="#7f8590" />
+        <rect x="441" y="260" width="42" height="31" fill="white" stroke="#7f8590" />
+        <rect x="437" y="264" width="42" height="31" fill="white" stroke="#7f8590" />
+        <path d="M441,290 L452,279 L460,285 L474,271" fill="none" stroke="#7f8590" stroke-width="1.2" />
+        <circle cx="470" cy="273" r="2.4" fill="#7f8590" />
+        <rect x="501" y="260" width="27" height="36" fill="white" stroke="#7f8590" />
+        <path d="M506,270 H523 M506,277 H523 M506,284 H523" stroke="#7f8590" stroke-width="1" />
+      </g>
+      <g class="node" data-k="dit">
+        <rect class="box blue" x="575" y="96" width="188" height="166" />
+        <text class="label strong title-ish" x="669" y="121" text-anchor="middle">DiT</text>
+        {Array.from({ length: 7 }, (_, i) => <use href={`#${id}-lat`} x={587 + i * 24} y="131" width="20" height="16" />)}
+        <g data-k="temporal" class="sub">
+          <rect x="589" y="158" width="160" height="28" />
+          <text x="669" y="177" text-anchor="middle">{text.temporal}</text>
+        </g>
+        <g data-k="crossview" class="sub">
+          <rect x="589" y="193" width="160" height="28" />
+          <text x="669" y="212" text-anchor="middle">{text.crossview}</text>
+        </g>
+        <text class="muted" x="669" y="248" text-anchor="middle">{text.ditGpus}</text>
+      </g>
+      <path class="wire" d="M669,264 V279" stroke={MUTED} marker-start={marker(MUTED)} marker-end={marker(MUTED)} />
+      <g class="node" data-k="kv">
+        <rect class="box gray" x="580" y="281" width="178" height="44" />
+        <text class="muted big" x="669" y="308" text-anchor="middle">{text.kv}</text>
+      </g>
+      <path class="wire" d="M158,150 H240" stroke={ORANGE} marker-end={marker(ORANGE)} />
+      <path class="wire" d="M347,150 H424" stroke={ORANGE} marker-end={marker(ORANGE)} />
+      <path class="wire" d="M541,150 H574" stroke={ORANGE} marker-end={marker(ORANGE)} />
+
+      <rect class="panel vae" x="808" y="52" width="161" height="372" />
+      <g class="node" data-k="vae">
+        <rect class="hit" x="808" y="52" width="161" height="52" />
+        <text class="label strong big" x="888" y="74" text-anchor="middle">{text.vae}</text>
+        <text class="muted" x="888" y="94" text-anchor="middle">GPU 3</text>
+      </g>
+      <line class="sep" x1="808" x2="969" y1="103" y2="103" />
+      <text class="col" x="812" y="122" fill={BLUE}>{text.latents}</text>
+      <text class="col" x="965" y="122" fill={GREEN} text-anchor="end">{text.frames}</text>
+      <path class="wire" d={`M763,147 H794 M794,${ROWS[0]} V${ROWS[6]}`} stroke={BLUE} fill="none" />
+      {ROWS.map(y => <path class="wire" d={`M794,${y} H816`} stroke={BLUE} marker-end={marker(BLUE)} />)}
+      <g class="node" data-k="latents">
+        {ROWS.map(y => <use href={`#${id}-lat`} x="818" y={y - 8} width="22" height="16" />)}
+      </g>
+      {ROWS.map(y => <path class="wire" d={`M841,${y} H851`} stroke={BLUE} marker-end={marker(BLUE)} />)}
+      <g class="node" data-k="vae">
+        <rect x="852" y="133" width="36" height="262" fill="#e3f1ea" stroke={GREEN} stroke-width="1.2" />
+        <text class="muted" transform="translate(875 264) rotate(-90)" text-anchor="middle">{text.shared}</text>
+      </g>
+      {ROWS.map(y => <path class="wire" d={`M889,${y} H900`} stroke={GREEN} marker-end={marker(GREEN)} />)}
+      <g class="node" data-k="frames">
+        {frames.map(f => <image href={img(f.n)} x={925 - f.w / 2} y={f.y - f.h / 2} width={f.w} height={f.h} preserveAspectRatio="xMidYMid slice" />)}
+      </g>
+      <path class="wire" d={`${frames.map(f => `M${925 + f.w / 2 + 1},${f.y} H960`).join(' ')} M960,${ROWS[0]} V408 H704`} stroke={GREEN} fill="none" marker-end={marker(GREEN)} />
+      <g class="node" data-k="av1">
+        <rect class="box gray" x="553" y="374" width="150" height="67" />
+        <text class="label strong big" x="628" y="413" text-anchor="middle">{text.av1}</text>
+      </g>
+      <g class="node" data-k="link">
+        <rect class="hit" x="170" y="396" width="383" height="46" />
+        <path class="wire" d="M553,408 H160" stroke={GREEN} marker-end={marker(GREEN)} />
+        <text class="link" x="374" y="434" text-anchor="middle">{text.link}</text>
+      </g>
+    </svg>
+    <div class="ifig-foot"><output class="ifig-readout" aria-live="polite"></output></div>
+    <script type="application/json" set:html={JSON.stringify(text.tips)}></script>
+  </architecture-flow>
+  <figcaption>{text.caption}</figcaption>
+</figure>
+
+<style>
+  architecture-flow { display: block; }
+  .title { font-size: 19px; font-weight: 700; fill: var(--ink); }
+  .panel { fill: #f7f8fa; stroke: #c4c9d1; stroke-width: 1.2; }
+  .panel.server { fill: white; }
+  .panel.inner { fill: #f7f8fa; }
+  .panel.gen { fill: #f5f8fc; stroke: #c9d3e0; }
+  .panel.vae { fill: #f2f8f5; stroke: #b9d8c9; }
+  .sep { stroke: #dfe3e8; }
+  .head { font-size: 15px; font-weight: 600; fill: var(--ink); }
+  .box { fill: white; stroke: #c4c9d1; stroke-width: 1.2; transition: stroke-width 150ms ease; }
+  .box.orange { fill: #fef3ec; stroke: #e8692f; stroke-width: 1.5; }
+  .box.blue { fill: #f2f6fd; stroke: #2a6fd6; stroke-width: 1.5; }
+  .box.gray { fill: white; stroke: #c4c9d1; }
+  .label { font-size: 14.5px; fill: var(--ink); }
+  .label.strong { font-weight: 600; }
+  .label.small { font-size: 13.5px; }
+  .big { font-size: 16px; }
+  .title-ish { font-size: 19px; }
+  .muted { font-size: 13px; fill: #6b7280; }
+  .muted.big { font-size: 15px; }
+  .col { font-size: 13px; }
+  .link { font-size: 14px; fill: #2e8a64; }
+  .sub rect { fill: white; stroke: #c9d3e0; transition: stroke 150ms ease; }
+  .sub text { font-size: 13.5px; fill: var(--ink); }
+  .wire { fill: none; stroke-width: 1.5; }
+  .hit { fill: transparent; }
+  .node, .sub { cursor: default; }
+  .node:hover .box { stroke-width: 2.4; }
+  .sub:hover rect { stroke: #2a6fd6; }
+</style>
+
+<script>
+  import { tooltip } from '../../scripts/tooltip';
+
+  class ArchitectureFlow extends HTMLElement {
+    connectedCallback() {
+      const tips: Record<string, string> = JSON.parse(this.querySelector('script[type="application/json"]')!.textContent!);
+      const tip = tooltip(this);
+      this.querySelectorAll<SVGGElement>('[data-k]').forEach(el => {
+        el.addEventListener('pointermove', event => { event.stopPropagation(); tip.show(tips[el.dataset.k!], event); });
+        el.addEventListener('pointerleave', () => tip.hide());
+      });
+    }
+  }
+  customElements.define('architecture-flow', ArchitectureFlow);
+</script>

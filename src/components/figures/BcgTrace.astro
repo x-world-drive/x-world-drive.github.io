@@ -1,0 +1,122 @@
+---
+import data from '../../data/figures/bcg_trace.json';
+import type { Lang } from '../../lib/i18n';
+
+interface Props { id: string; lang: Lang }
+const { id, lang } = Astro.props;
+
+type Call = [number, number, number];
+type Kernel = [number, number, string, number];
+interface Layer { gpu_ms: number; calls: Call[]; kernels: Kernel[]; busy_pct: number }
+const eager = data.eager as unknown as Layer, bcg = data.bcg as unknown as Layer;
+const GRAPH = data.apis.indexOf('cudaGraphLaunch');
+
+const text = {
+  en: {
+    busy: (p: number) => `busy ${p}%`, done: (ms: number) => `${ms.toFixed(1)} ms`,
+    caption: 'Figure 2. GPU trace of one DiT layer under eager and BCG.',
+    aria: 'One DiT layer under eager execution and Breakable CUDA Graph on a shared time axis',
+  },
+  zh: {
+    busy: (p: number) => `busy ${p}%`, done: (ms: number) => `${ms.toFixed(1)} ms`,
+    caption: '图 2. 单层 DiT 在 eager 与 BCG 下的 GPU trace。',
+    aria: '同一 DiT 层在 eager 与 Breakable CUDA Graph 下共用时间轴的 GPU 执行',
+  },
+}[lang];
+
+const X0 = 96, X1 = 752, SPAN = eager.gpu_ms * 1000;
+const sx = (us: number) => X0 + (X1 - X0) * us / SPAN;
+const ROWS = { eager: 46, bcg: 96 }, LANE = 30;
+
+function bands(layer: Layer) {
+  const graph = (call: number) => call >= 0 && layer.calls[call][2] === GRAPH;
+  const out: { x: number; w: number; graph: boolean }[] = [];
+  for (const [start, dur, , call] of [...layer.kernels].sort((a, b) => a[0] - b[0])) {
+    const x = sx(start), end = sx(start + dur), g = graph(call), last = out[out.length - 1];
+    if (last && last.graph === g && x - (last.x + last.w) < 0.5) last.w = Math.max(last.w, end - last.x);
+    else out.push({ x, w: Math.max(end - x, 0.6), graph: g });
+  }
+  return out.map(b => ({ x: +b.x.toFixed(2), w: +b.w.toFixed(2), graph: b.graph }));
+}
+const lanes = { eager: bands(eager), bcg: bands(bcg) };
+const ends = { eager: eager.gpu_ms, bcg: bcg.gpu_ms };
+const ticks = Array.from({ length: 10 }, (_, i) => i * 2).map(ms => ({ x: sx(ms * 1000), label: `${ms} ms` }));
+
+const height = ROWS.bcg + LANE + 12;
+const finish = (layer: Layer) => layer.kernels.map(k => +(k[0] + k[1]).toFixed(1)).sort((a, b) => a - b);
+---
+<figure class="article-figure ifig" id={id}>
+  <bcg-trace>
+    <svg viewBox={`0 0 760 ${height}`} role="img" aria-label={text.aria}>
+      {ticks.map(t => <g class="tick"><line x1={t.x} x2={t.x} y1="28" y2={ROWS.bcg + LANE + 4} /><text x={t.x + 3} y="22">{t.label}</text></g>)}
+      {(['eager', 'bcg'] as const).map(mode => (
+        <g>
+          <text class="row-label" x="0" y={ROWS[mode] + 13}>{mode === 'eager' ? 'a. Eager' : 'b. BCG'}</text>
+          <text class="row-sub" x="0" y={ROWS[mode] + 27}>{text.busy(mode === 'eager' ? eager.busy_pct : bcg.busy_pct)}</text>
+          {lanes[mode].map(b => <rect x={b.x} y={ROWS[mode]} width={b.w} height={LANE} class={b.graph ? 'graph' : 'eager'} />)}
+          <g class="end">
+            <line x1={sx(ends[mode] * 1000)} x2={sx(ends[mode] * 1000)} y1={ROWS[mode] - 4} y2={ROWS[mode] + LANE + 4} />
+            <text x={sx(ends[mode] * 1000) + (mode === 'eager' ? 0 : 6)} y={mode === 'eager' ? ROWS[mode] - 7 : ROWS[mode] + 19} text-anchor={mode === 'eager' ? 'end' : 'start'}>{text.done(ends[mode])}</text>
+          </g>
+        </g>
+      ))}
+      <line class="playhead" x1={X0} x2={X0} y1="28" y2={ROWS.bcg + LANE + 4} />
+      <rect class="hit" x={X0} y="28" width={X1 - X0} height={ROWS.bcg + LANE - 24} />
+    </svg>
+    <div class="ifig-foot">
+      <span class="key"><i style="--key: #f2a33a"></i>cudaLaunchKernel</span>
+      <span class="key"><i style="--key: #2f6fe4"></i>cudaGraphLaunch</span>
+      <output class="ifig-readout" aria-live="polite"></output>
+    </div>
+    <script type="application/json" set:html={JSON.stringify({ lang, span: SPAN, x0: X0, x1: X1, eager: finish(eager), bcg: finish(bcg) })}></script>
+  </bcg-trace>
+  <figcaption>{text.caption}</figcaption>
+</figure>
+
+<style>
+  bcg-trace { display: block; }
+  .row-label { font-size: 12px; font-weight: 600; fill: var(--ink); }
+  .row-sub { font-size: 9.5px; fill: #9aa1ab; font-variant-numeric: tabular-nums; }
+  rect.eager { fill: #f2a33a; }
+  rect.graph { fill: #2f6fe4; }
+  .end line { stroke: var(--ink); stroke-width: 1.2; }
+  .end text { font-size: 10px; fill: var(--ink); font-variant-numeric: tabular-nums; }
+  .playhead { stroke: var(--ink); stroke-width: 1; stroke-dasharray: 3 3; visibility: hidden; }
+  bcg-trace[data-scrub] .playhead { visibility: visible; }
+  .hit { fill: transparent; cursor: ew-resize; }
+</style>
+
+<script>
+  import { tooltip } from '../../scripts/tooltip';
+
+  interface Data { lang: 'en' | 'zh'; span: number; x0: number; x1: number; eager: number[]; bcg: number[] }
+  const say = {
+    en: (t: number, a: number, an: number, b: number, bn: number) => `${t.toFixed(1)} ms: eager ${a}/${an}, BCG ${b}/${bn} kernels`,
+    zh: (t: number, a: number, an: number, b: number, bn: number) => `${t.toFixed(1)} ms：eager ${a}/${an}，BCG ${b}/${bn} 个 kernel`,
+  };
+  const done = (ends: number[], t: number) => {
+    let lo = 0, hi = ends.length;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (ends[mid] <= t) lo = mid + 1; else hi = mid; }
+    return lo;
+  };
+
+  class BcgTrace extends HTMLElement {
+    connectedCallback() {
+      const data: Data = JSON.parse(this.querySelector('script[type="application/json"]')!.textContent!);
+      const head = this.querySelector<SVGLineElement>('.playhead')!;
+      const hit = this.querySelector<SVGRectElement>('.hit')!;
+      const tip = tooltip(this);
+      hit.addEventListener('pointermove', event => {
+        const box = hit.getBoundingClientRect();
+        const us = Math.min(1, Math.max(0, (event.clientX - box.left) / box.width)) * data.span;
+        const x = String(data.x0 + (data.x1 - data.x0) * us / data.span);
+        head.setAttribute('x1', x);
+        head.setAttribute('x2', x);
+        this.dataset.scrub = '';
+        tip.show(say[data.lang](us / 1000, done(data.eager, us), data.eager.length, done(data.bcg, us), data.bcg.length), event);
+      });
+      hit.addEventListener('pointerleave', () => { delete this.dataset.scrub; tip.hide(); });
+    }
+  }
+  customElements.define('bcg-trace', BcgTrace);
+</script>

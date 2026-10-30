@@ -1,0 +1,77 @@
+---
+import steps from '../../data/figures/codec.json';
+import type { Lang } from '../../lib/i18n';
+
+interface Props { id: string; lang: Lang }
+const { id, lang } = Astro.props;
+const text = {
+  en: {
+    labels: ['Eager (NCDHW)', '+ per-view graphs', '+ channels-last', '+ conv kernel swap'],
+    budget: '167 ms budget', unit: 'ms',
+    say: (ms: number, delta: number | null, kernels: number) =>
+      `${ms} ms${delta === null ? '' : ` (${delta > 0 ? '+' : ''}${delta.toFixed(1)} ms)`}, ${kernels} kernels`,
+    caption: 'Figure 9. Seven-view VAE decode time across optimization steps.',
+    aria: 'VAE GPU time per request across four optimization steps against a 167 ms budget',
+  },
+  zh: {
+    labels: ['Eager（NCDHW）', '+ 分视角 graph', '+ channels-last', '+ 卷积 kernel 替换'],
+    budget: '预算 167 ms', unit: 'ms',
+    say: (ms: number, delta: number | null, kernels: number) =>
+      `${ms} ms${delta === null ? '' : `（${delta > 0 ? '+' : ''}${delta.toFixed(1)} ms）`}，${kernels} 个 kernel`,
+    caption: '图 9. 七路 VAE 解码各优化阶段的耗时。',
+    aria: '四个优化阶段每次请求的 VAE GPU 时间与 167 ms 预算',
+  },
+}[lang];
+
+const X0 = 150, X1 = 740, MAX = 380, ROW = 40, TOP = 20, H = 24, BUDGET = 1000 / 12 * 2;
+const sx = (ms: number) => X0 + (X1 - X0) * ms / MAX;
+const rows = steps.map((s, i) => ({ ...s, y: TOP + i * ROW, label: text.labels[i] }));
+const height = TOP + rows.length * ROW + 18;
+const lines = rows.map((r, i) => text.say(r.busy_ms, i ? r.busy_ms - rows[i - 1].busy_ms : null, r.kernels));
+---
+<figure class="article-figure ifig" id={id}>
+  <codec-steps>
+    <svg viewBox={`0 0 760 ${height}`} role="img" aria-label={text.aria}>
+      {[0, 100, 200, 300].map(t => <g class="tick"><line x1={sx(t)} x2={sx(t)} y1={TOP - 6} y2={height - 14} /><text x={sx(t)} y={height - 2} text-anchor="middle">{t} {text.unit}</text></g>)}
+      {rows.map((r, i) => (
+        <g class="step" data-index={i}>
+          <text class="label" x={X0 - 10} y={r.y + 16} text-anchor="end">{r.label}</text>
+          <rect x={X0} y={r.y} width={sx(r.busy_ms) - X0} height={H} rx="2" />
+          <text class="val" x={sx(r.busy_ms) - 6} y={r.y + 16} text-anchor="end">{r.busy_ms}</text>
+        </g>
+      ))}
+      <line class="budget" x1={sx(BUDGET)} x2={sx(BUDGET)} y1={TOP - 10} y2={height - 14} />
+      <text class="budget-label" x={sx(BUDGET) + 5} y={TOP - 4}>{text.budget}</text>
+    </svg>
+    <div class="ifig-foot"><output class="ifig-readout" aria-live="polite"></output></div>
+    <script type="application/json" set:html={JSON.stringify(lines)}></script>
+  </codec-steps>
+  <figcaption>{text.caption}</figcaption>
+</figure>
+
+<style>
+  codec-steps { display: block; }
+  .label { font-size: 11.5px; fill: var(--ink); transition: fill 200ms ease; }
+  .val { font-size: 11px; fill: white; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .step rect { fill: #2a78d6; transform-box: fill-box; transform-origin: left center; transition: fill 220ms ease, opacity 220ms ease; }
+  .step:not([data-index='3']) rect { fill: #a9c6ec; }
+  .budget { stroke: #e34948; stroke-width: 1.4; stroke-dasharray: 5 3; }
+  .budget-label { font-size: 10px; fill: #e34948; }
+</style>
+
+<script>
+  import { tooltip } from '../../scripts/tooltip';
+
+  class CodecSteps extends HTMLElement {
+    connectedCallback() {
+      const lines: string[] = JSON.parse(this.querySelector('script[type="application/json"]')!.textContent!);
+      const groups = [...this.querySelectorAll<SVGGElement>('.step')];
+      const tip = tooltip(this);
+      groups.forEach((group, i) => {
+        group.addEventListener('pointermove', event => tip.show(lines[i], event));
+        group.addEventListener('pointerleave', () => tip.hide());
+      });
+    }
+  }
+  customElements.define('codec-steps', CodecSteps);
+</script>

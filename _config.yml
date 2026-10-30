@@ -1,0 +1,2 @@
+# The site is docs/; if Pages ever builds the repository root, publish none of the sources.
+exclude: [src, scripts, public, source, dist, README.md, package.json, package-lock.json, tsconfig.json, astro.config.mjs]

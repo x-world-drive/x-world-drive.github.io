@@ -1,0 +1,7 @@
+[
+  {"kind": "driving", "titles": {"zh": "驾驶演示 1", "en": "Driving demo 1"}, "labels": {"zh": "实机演示 1", "en": "Live demo 1"}},
+  {"kind": "driving", "titles": {"zh": "驾驶演示 2", "en": "Driving demo 2"}, "labels": {"zh": "实机演示 2", "en": "Live demo 2"}},
+  {"kind": "recording", "titles": {"zh": "录屏：晴天路口掉头", "en": "Screen recording: U-turn at a clear intersection"}, "labels": {"zh": "录屏：晴天路口掉头", "en": "Recording: U-turn, clear"}},
+  {"kind": "recording", "titles": {"zh": "录屏：阴天路口掉头", "en": "Screen recording: U-turn at an overcast intersection"}, "labels": {"zh": "录屏：阴天路口掉头", "en": "Recording: U-turn, overcast"}},
+  {"kind": "recording", "titles": {"zh": "录屏：阴天路口起步直行", "en": "Screen recording: Pulling away straight at an overcast intersection"}, "labels": {"zh": "录屏：起步直行", "en": "Recording: pull away straight"}}
+]

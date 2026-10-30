@@ -1,0 +1,32 @@
+---
+import { asset } from '../lib/paths';
+import type { Lang } from '../lib/i18n';
+import ArchitectureFlow from './figures/ArchitectureFlow.astro';
+import BcgReplay from './figures/BcgReplay.astro';
+import BcgTrace from './figures/BcgTrace.astro';
+import FeedbackPasses from './figures/FeedbackPasses.astro';
+import PipelineSchedule from './figures/PipelineSchedule.astro';
+import CodecSteps from './figures/CodecSteps.astro';
+import NetworkWarmup from './figures/NetworkWarmup.astro';
+import GcTail from './figures/GcTail.astro';
+import LayerAblation from './figures/LayerAblation.astro';
+import OperatorBench from './figures/OperatorBench.astro';
+
+export interface FigureData { id: string; name: string; src: string; width: number; height: number; caption: string; zoom: string }
+interface Props { figure: FigureData; lang: Lang }
+const { figure, lang } = Astro.props;
+const interactive = {
+  fig_bcg_trace: BcgTrace, figure4_operator_benchmarks: OperatorBench, fig_layers: LayerAblation, fig_gc_tail: GcTail,
+  fig_codec: CodecSteps, fig_network_warmup: NetworkWarmup, fig01_architecture: ArchitectureFlow, fig_bcg_replay: BcgReplay,
+  fig_latent_feedback_simple: FeedbackPasses, fig_feedback_pipeline: PipelineSchedule,
+} as unknown as Record<string, (props: { id: string; lang: Lang; figure: FigureData }) => unknown>;
+const Interactive = interactive[figure.name];
+---
+{Interactive ? <Interactive id={figure.id} lang={lang} figure={figure} /> : (
+  <figure class="article-figure" id={figure.id}>
+    <a class="figure-link" href={asset(figure.src)} target="_blank" rel="noopener" data-zoom aria-label={figure.zoom + figure.caption}>
+      <img src={asset(figure.src)} width={figure.width} height={figure.height} alt={figure.caption} loading="lazy" decoding="async" />
+    </a>
+    <figcaption>{figure.caption}</figcaption>
+  </figure>
+)}

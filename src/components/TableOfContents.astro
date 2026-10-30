@@ -1,0 +1,14 @@
+---
+import { articles, ui, type Lang } from '../lib/i18n';
+interface Props { lang: Lang; mobile?: boolean }
+const { lang, mobile = false } = Astro.props;
+---
+<nav aria-label={mobile ? ui[lang].tocMobileLabel : ui[lang].tocLabel} class:list={['toc', { 'toc-mobile': mobile }]}>
+  <ol>
+    {articles[lang].headings.map(heading => (
+      <li class:list={{ 'toc-subheading': heading.depth === 3 }}>
+        <a href={`#${heading.id}`} data-toc-link>{heading.text}</a>
+      </li>
+    ))}
+  </ol>
+</nav>

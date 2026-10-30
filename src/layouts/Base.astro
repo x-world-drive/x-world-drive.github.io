@@ -1,0 +1,60 @@
+---
+import { asset } from '../lib/paths';
+import { articles, home, languages, ui, type Lang } from '../lib/i18n';
+import '../styles/global.css';
+interface Props { lang: Lang; title: string; description?: string; articlePage?: boolean }
+const { lang, title, description = articles[lang].description, articlePage = false } = Astro.props;
+const text = ui[lang];
+const other: Lang = lang === 'en' ? 'zh' : 'en';
+const canonical = Astro.site ? new URL(Astro.url.pathname, Astro.site) : null;
+const poster = articles[lang].videos[0]?.poster;
+---
+<!doctype html>
+<html lang={text.htmlLang}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content={description} />
+    {articlePage && <meta name="author" content={text.author} />}
+    <meta name="theme-color" content="#ffffff" />
+    <meta property="og:type" content={articlePage ? 'article' : 'website'} />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:locale" content={text.ogLocale} />
+    {canonical && <link rel="canonical" href={canonical} />}
+    {Astro.site && languages.map(code => (
+      <link rel="alternate" hreflang={ui[code].htmlLang} href={new URL(home(code), Astro.site)} />
+    ))}
+    {Astro.site && poster && <meta property="og:image" content={new URL(asset(poster), Astro.site)} />}
+    <link rel="icon" type="image/svg+xml" href={asset('brand/xpeng-symbol.svg')} />
+    <link rel="stylesheet" href={asset('fonts/reading.css')} />
+    <link rel="stylesheet" href={asset('fonts/interface.css')} />
+    <title>{title} | {text.siteName}</title>
+  </head>
+  <body id="top">
+    <a class="skip-link" href="#main">{text.skip}</a>
+    <header class="site-header">
+      <div class="header-inner">
+        <a class="brand" href={home(lang)} aria-label={text.homeLabel}>
+          <img src={asset('brand/xpeng-logo.svg')} width="148" height="20" alt="XPENG" />
+        </a>
+        <nav aria-label={text.mainNav}>
+          <a class="lang-switch" href={home(other)} hreflang={ui[other].htmlLang} lang={ui[other].htmlLang} aria-label={text.switchName}>{text.switchLabel}</a>
+        </nav>
+      </div>
+      {articlePage && <div class="page-progress" aria-hidden="true"><span id="page-progress-fill"></span></div>}
+    </header>
+    <main id="main"><slot /></main>
+    <footer class="site-footer">
+      <div class="footer-inner">
+        <div class="footer-brand">
+          <img src={asset('brand/xpeng-logo.svg')} width="111" height="15" alt="XPENG" />
+        </div>
+        <div class="footer-links">
+          <a href={text.websiteUrl} target="_blank" rel="noopener noreferrer">{text.website}</a>
+          <a href="#top">{text.backTop}</a>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

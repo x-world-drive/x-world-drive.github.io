@@ -1,0 +1,1 @@
+[{"name":"RMSNorm + RoPE","native_us":135.6,"fused_us":17.5,"exact":true},{"name":"Residual + LayerNorm","native_us":16.9,"fused_us":6.3,"exact":true},{"name":"QKV projection","native_us":57.4,"fused_us":54.4,"exact":true},{"name":"PatchCaPE (K/V)","native_us":191.0,"fused_us":4.4,"exact":true},{"name":"Masked softmax","native_us":61.1,"fused_us":9.5,"exact":true}]

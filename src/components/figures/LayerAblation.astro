@@ -1,0 +1,119 @@
+---
+import stages from '../../data/figures/layers.json';
+import type { Lang } from '../../lib/i18n';
+
+interface Props { id: string; lang: Lang }
+const { id, lang } = Astro.props;
+
+const CLASSES = [
+  { key: 'gemm', color: '#2a78d6', en: 'GEMM', zh: 'GEMM' },
+  { key: 'attention', color: '#eb6834', en: 'attention', zh: 'attention' },
+  { key: 'communication', color: '#1baf7a', en: 'communication', zh: '通信' },
+  { key: 'norm', color: '#eda100', en: 'norms', zh: '归一化' },
+  { key: 'copy_fill', color: '#e87ba4', en: 'copies / fills', zh: '复制 / 填充' },
+  { key: 'elementwise_other', color: '#3f8f4a', en: 'other elementwise', zh: '其他逐元素' },
+] as const;
+const text = {
+  en: {
+    stages: ['Unfused', '+ RMSNorm / RoPE', '+ LayerNorm / pointwise', '+ QKV / peer write', '+ PatchCaPE / softmax', '+ KV writes / traffic lights'],
+    wall: 'Wall', kernels: 'Kernels', unit: 'µs',
+    hint: '',
+    caption: 'Figure 5. DiT layer time across operator fusion steps.',
+    aria: 'Stacked bars of per-layer kernel time for six optimization steps',
+  },
+  zh: {
+    stages: ['未融合', '+ RMSNorm / RoPE', '+ LayerNorm / 逐元素', '+ QKV / 跨卡写入', '+ PatchCaPE / softmax', '+ KV 写入 / 红绿灯'],
+    wall: 'Wall', kernels: 'Kernels', unit: 'µs',
+    hint: '',
+    caption: '图 5. 逐步融合算子后的 DiT 单层耗时。',
+    aria: '六个优化阶段的每层 kernel 耗时堆叠条形图',
+  },
+}[lang];
+
+const LABEL = 168, X0 = 176, X1 = 650, MAX = 3200, ROW = 36, TOP = 30, H = 20;
+const scale = (us: number) => (X1 - X0) * us / MAX;
+const rows = stages.map((stage, i) => {
+  let x = X0;
+  const segments = CLASSES.map(c => {
+    const us = (stage.classes as Record<string, number>)[c.key] ?? 0;
+    const segment = { key: c.key, color: c.color, x: +x.toFixed(2), w: +scale(us).toFixed(2), us };
+    x += scale(us);
+    return segment;
+  });
+  return { y: TOP + i * ROW, label: text.stages[i], wall: stage.wall_us, kernels: stage.kernels, segments };
+});
+const ticks = [0, 1000, 2000, 3000].map(us => ({ x: X0 + scale(us), label: String(us) }));
+const height = TOP + rows.length * ROW + 18;
+---
+<figure class="article-figure ifig" id={id}>
+  <layer-ablation>
+    <div class="ifig-bar">
+      <p class="legend">{CLASSES.map(c => <span class="chip" data-class={c.key} tabindex="0"><i style={`--key: ${c.color}`}></i>{c[lang]}</span>)}</p>
+    </div>
+    <svg viewBox={`0 0 760 ${height}`} role="img" aria-label={text.aria}>
+      {ticks.map(t => <g class="tick"><line x1={t.x} x2={t.x} y1={TOP - 8} y2={height - 14} /><text x={t.x} y={height - 2} text-anchor="middle">{t.label} {text.unit}</text></g>)}
+      <text class="col" x="704" y={TOP - 12} text-anchor="end">{text.wall} ({text.unit})</text>
+      <text class="col" x="758" y={TOP - 12} text-anchor="end">{text.kernels}</text>
+      {rows.map((row, i) => (
+        <g class="row" data-stage={i}>
+          <text class="stage" x={LABEL} y={row.y + 14} text-anchor="end">{row.label}</text>
+          {row.segments.map(s => <rect x={s.x} y={row.y} width={s.w} height={H} fill={s.color} data-class={s.key} data-us={s.us} />)}
+          <text class="num" x="704" y={row.y + 14} text-anchor="end">{row.wall}</text>
+          <text class="num" x="758" y={row.y + 14} text-anchor="end">{row.kernels.toFixed(1)}</text>
+        </g>
+      ))}
+    </svg>
+    <div class="ifig-foot"><output class="ifig-readout" aria-live="polite">{text.hint}</output></div>
+    <script type="application/json" set:html={JSON.stringify({ lang, hint: text.hint, stages: text.stages, names: Object.fromEntries(CLASSES.map(c => [c.key, c[lang]])), walls: stages.map(s => s.wall_us) })}></script>
+  </layer-ablation>
+  <figcaption>{text.caption}</figcaption>
+</figure>
+
+<style>
+  layer-ablation { display: block; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 0; font-size: 12px; color: var(--muted); }
+  .chip { display: inline-flex; align-items: center; gap: 6px; cursor: default; outline: none; }
+  .chip:hover, .chip:focus-visible { color: var(--ink); }
+  .chip i { width: 10px; height: 10px; border-radius: 2px; background: var(--key); }
+  .stage { font-size: 11px; fill: var(--ink); }
+  .col { font-size: 9.5px; fill: #9aa1ab; }
+  .num { font-size: 11px; fill: var(--ink); font-variant-numeric: tabular-nums; }
+  rect { stroke: white; stroke-width: .8; transition: opacity 180ms ease; }
+  layer-ablation[data-class] rect:not(.on) { opacity: .18; }
+</style>
+
+<script>
+  interface Data { lang: 'en' | 'zh'; hint: string; stages: string[]; names: Record<string, string>; walls: number[] }
+  import { tooltip } from '../../scripts/tooltip';
+
+  const fmt = (name: string, us: number) => `${name}: ${us} µs`;
+  const trend = (name: string, values: number[]) => `${name}: ${values[0]} → ${values[values.length - 1]} µs`;
+
+  class LayerAblation extends HTMLElement {
+    connectedCallback() {
+      const data: Data = JSON.parse(this.querySelector('script[type="application/json"]')!.textContent!);
+      const tip = tooltip(this);
+      const chips = [...this.querySelectorAll<HTMLElement>('.chip')];
+      const rects = [...this.querySelectorAll<SVGRectElement>('rect[data-class]')];
+      const focus = (key: string, event?: PointerEvent) => {
+        rects.forEach(r => r.classList.toggle('on', r.dataset.class === key));
+        if (key) this.dataset.class = key; else delete this.dataset.class;
+        if (key) tip.show(trend(data.names[key], rects.filter(r => r.dataset.class === key).map(r => Number(r.dataset.us))), event);
+        else tip.hide();
+      };
+      chips.forEach(chip => {
+        chip.addEventListener('pointermove', e => focus(chip.dataset.class!, e));
+        chip.addEventListener('focus', () => focus(chip.dataset.class!));
+        chip.addEventListener('pointerleave', () => focus(''));
+        chip.addEventListener('blur', () => focus(''));
+      });
+      rects.forEach(rect => {
+        rect.addEventListener('pointermove', event => {
+          tip.show(fmt(data.names[rect.dataset.class!], Number(rect.dataset.us)), event);
+        });
+        rect.addEventListener('pointerleave', () => tip.hide());
+      });
+    }
+  }
+  customElements.define('layer-ablation', LayerAblation);
+</script>

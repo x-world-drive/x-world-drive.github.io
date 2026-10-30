@@ -1,0 +1,80 @@
+---
+import Base from '../layouts/Base.astro';
+import Videos from './Videos.astro';
+import TableOfContents from './TableOfContents.astro';
+import Figure, { type FigureData } from './Figure.astro';
+import { asset } from '../lib/paths';
+import { articles, home, ui, type Lang } from '../lib/i18n';
+interface Props { lang: Lang }
+const { lang } = Astro.props;
+const article = articles[lang];
+const text = ui[lang];
+const [titleHead, titleTail] = article.title.split('：');
+const AUTHORS = ['Zeng, Yixiao', 'Zheng, Chaoda', 'Zhang, Yuqi', 'Zhang, Langming', 'Deng, Jinhao', 'Wang, Boyang', 'Zhang, Yu', 'Tian, Bo'];
+const url = Astro.site ? new URL(home('en'), Astro.site).href : home('en');
+const bibtex = String.raw`@misc{xpeng2026xworld,
+  author = {${AUTHORS.join(' and ')}},
+  title = {{${articles.en.title}}},
+  year = {2026},
+  howpublished = {\url{${url}}}
+}`;
+---
+<Base lang={lang} title={article.title} articlePage>
+  <article class="feature-article">
+      <header class="article-header feature-hero">
+        <div class="article-meta">
+          <span>{text.updated} <time datetime={article.updated}>{text.updatedDate}</time></span>
+        </div>
+        <h1>{titleTail ? <Fragment>{titleHead}：<br class="title-break" />{titleTail}</Fragment> : article.title}</h1>
+        <p class="article-author">{text.author}</p>
+        <div class="article-tools">
+          <span>{text.readingTime(article.readingMinutes)}</span>
+          <button type="button" id="copy-link" hidden>{text.copyLink}</button>
+          <span class="sr-only" id="copy-status" role="status" aria-live="polite"></span>
+        </div>
+      </header>
+      <div class="feature-media"><Videos lang={lang} /></div>
+    <div class="article-layout">
+    <div class="article-main">
+      <details class="mobile-contents">
+        <summary>{text.contents}</summary>
+        <TableOfContents lang={lang} mobile />
+      </details>
+      <div class="article-body" id="introduction">
+        {(article.segments as ({ html: string } | { figure: FigureData })[]).map(segment => 'html' in segment
+          ? <Fragment set:html={segment.html.replaceAll('__BASE__', asset())} />
+          : <Figure figure={segment.figure} lang={lang} />)}
+      </div>
+      <section class="article-citation" id="citation" aria-labelledby="citation-heading">
+        <div class="citation-heading">
+          <h2 id="citation-heading">BibTeX</h2>
+          <button type="button" id="copy-citation" aria-controls="bibtex-citation" hidden>{text.copyBibtex}</button>
+        </div>
+        <pre tabindex="0" aria-label={text.bibtexLabel}><code id="bibtex-citation">{bibtex}</code></pre>
+        <span class="sr-only" id="citation-status" role="status" aria-live="polite"></span>
+      </section>
+    </div>
+    <aside class="article-sidebar" aria-label={text.readingNav}>
+      <div class="sidebar-sticky">
+        <h2>{text.contents}</h2>
+        <TableOfContents lang={lang} />
+        <div class="reading-progress">
+          <div class="progress-caption"><label for="reading-progress">{text.readingProgress}</label><span id="progress-label">0%</span></div>
+          <progress id="reading-progress" max="100" value="0">0%</progress>
+        </div>
+        <a class="back-top" href="#top">{text.backTop}</a>
+      </div>
+    </aside>
+    </div>
+  </article>
+  <dialog id="image-dialog" aria-labelledby="image-caption">
+    <form method="dialog"><button autofocus aria-label={text.closeImage}>{text.close} <span aria-hidden="true">×</span></button></form>
+    <img id="expanded-image" alt="" />
+    <p id="image-caption"></p>
+  </dialog>
+</Base>
+
+<script>
+  import '../scripts/article';
+  import '../scripts/gallery';
+</script>

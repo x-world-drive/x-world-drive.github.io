@@ -1,0 +1,49 @@
+---
+import { asset } from '../lib/paths';
+import { articles, ui, type Lang } from '../lib/i18n';
+interface Props { lang: Lang }
+const { lang } = Astro.props;
+const text = ui[lang];
+const videos = articles[lang].videos;
+---
+<section id="videos" class="video-section" aria-labelledby="video-heading">
+  <div class="section-heading">
+    <h2 id="video-heading">{text.videoHeading}</h2>
+  </div>
+  <div class="demo-stage" data-kind={videos[0].kind}>
+    {videos.map((video, index) => (
+      <div class="video-panel" id={video.id} role="tabpanel" aria-labelledby={`tab-${video.id}`} tabindex="0" hidden={index > 0} data-kind={video.kind}>
+        <video controls playsinline preload="none" poster={asset(video.poster)} width={video.width} height={video.height} aria-label={video.title} aria-describedby={video.kind === 'recording' ? 'route-note' : undefined}>
+          <source src={asset(video.src)} type="video/mp4" />
+          {text.noVideo}<a href={asset(video.src)}>{text.downloadVideo}</a>
+        </video>
+        <p class="media-error" hidden>{text.videoError}<a href={asset(video.src)} download>{text.downloadToWatch}</a></p>
+      </div>
+    ))}
+  </div>
+  <div class="video-choices" role="tablist" aria-label={text.chooseVideo} hidden>
+    {videos.map((video, index) => (
+      <button class="video-choice" type="button" role="tab" id={`tab-${video.id}`} aria-controls={video.id} aria-selected={index === 0 ? 'true' : 'false'} tabindex={index === 0 ? '0' : '-1'}>
+        <span class="video-choice-image"><img src={asset(video.poster)} width="160" height="90" alt="" loading="lazy" /><span class="choice-play" aria-hidden="true">▷</span></span>
+        <span class="video-choice-label">{video.label}</span>
+      </button>
+    ))}
+  </div>
+  <div class="recording-notes" id="trajectory-legend">
+    <div class="trajectory-legend">
+      <p><span class="trajectory-swatch dashed" aria-hidden="true"></span><span><strong>{text.dashedName}</strong>{text.dashed}</span></p>
+      <p><span class="trajectory-swatch solid" aria-hidden="true"></span><span><strong>{text.solidName}</strong>{text.solid}</span></p>
+    </div>
+    <p class="route-note" id="route-note" hidden={videos[0].kind !== 'recording'}><span class="route-swatch" aria-hidden="true"></span><span><strong>{text.routeName}</strong>{text.route}</span></p>
+  </div>
+  <noscript>
+    <style is:inline>
+      .demo-stage { aspect-ratio: auto !important; background: transparent !important; overflow: visible !important; }
+      .demo-stage .video-panel[hidden] { display: block !important; }
+      .demo-stage .video-panel { position: relative !important; margin-bottom: 24px; }
+      .demo-stage video { height: auto !important; max-height: 600px; }
+      .recording-notes[hidden] { display: block !important; }
+      .route-note[hidden] { display: flex !important; }
+    </style>
+  </noscript>
+</section>

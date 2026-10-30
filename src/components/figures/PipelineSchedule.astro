@@ -1,0 +1,231 @@
+---
+import type { Lang } from '../../lib/i18n';
+
+interface Props { id: string; lang: Lang }
+const { id, lang } = Astro.props;
+
+type Panel = 'a' | 'b';
+type Kind = 'den' | 'kv' | 'wait' | 'dec' | 'bnd' | 'send';
+const text = {
+  en: {
+    panels: { a: '(a) Release after decode', b: '(b) Release at commit' },
+    lanes: ['DiT GPUs', 'Codec GPU', 'CPU / network'],
+    names: { den: 'Denoise', kv: 'KV finalize', wait: 'Wait', dec: 'Decode', bnd: 'Boundary', send: 'AV1 / send' },
+    latent: 'Latent ready', commit: 'State committed', time: 'Time',
+    data: 'Data dependency', sched: 'Scheduling constraint',
+    tips: {
+      'a.den_i': 'Chunk-ending pass (request i)',
+      'a.kv': 'Write history KV cache',
+      'a.wait': 'Idle until Decode i finishes',
+      'a.den_i1': 'Next chunk (starts after Decode i)',
+      'a.dec_i': '7-view VAE decode (after KV finalize)',
+      'a.bnd': 'Re-encode last frame for next chunk',
+      'a.dec_i1': '7-view VAE decode (request i + 1)',
+      'a.send_i': 'AV1 encode and send (request i)',
+      'a.send_i1': 'AV1 encode and send (request i + 1)',
+      'b.den_i': 'Chunk-ending pass (request i)',
+      'b.kv': 'Write history KV cache (overlapped with Decode i)',
+      'b.den_i1': 'Next chunk (starts right after KV finalize)',
+      'b.dec_i': '7-view VAE decode (starts at latent ready)',
+      'b.bnd': 'Re-encode last frame for next chunk',
+      'b.dec_i1': '7-view VAE decode (request i + 1)',
+      'b.send_i': 'AV1 encode and send (after state commit)',
+      'b.send_i1': 'AV1 encode and send (request i + 1)',
+    } as Record<string, string>,
+    caption: 'Figure 7. Pipeline timeline when releasing after decode (a) vs. after state commit (b).',
+    aria: 'Two schematic timelines on a shared time axis with DiT GPU, codec GPU and CPU lanes. Released after decode, the DiT waits for Decode i before Denoise i + 1. Released at commit, Denoise i + 1 starts right after KV finalize while the codec GPU decodes request i.',
+  },
+  zh: {
+    panels: { a: '（a）解码后释放', b: '（b）状态提交后释放' },
+    lanes: ['DiT GPU', 'Codec GPU', 'CPU / 网络'],
+    names: { den: '去噪', kv: 'KV finalize', wait: '等待', dec: '解码', bnd: 'Boundary', send: 'AV1 / 发送' },
+    latent: 'latent 就绪', commit: '状态已提交', time: '时间',
+    data: '数据依赖', sched: '调度约束',
+    tips: {
+      'a.den_i': '当前 chunk 末轮去噪（请求 i）',
+      'a.kv': '写入历史 KV cache',
+      'a.wait': '等待解码 i 结束',
+      'a.den_i1': '下一 chunk 首轮（解码 i 后才开始）',
+      'a.dec_i': '七路 VAE 解码（KV finalize 后）',
+      'a.bnd': '末帧重编码（跨 chunk 边界）',
+      'a.dec_i1': '七路 VAE 解码（请求 i + 1）',
+      'a.send_i': 'AV1 编码并发送（请求 i）',
+      'a.send_i1': 'AV1 编码并发送（请求 i + 1）',
+      'b.den_i': '当前 chunk 末轮去噪（请求 i）',
+      'b.kv': '写入历史 KV cache（与解码 i 并行）',
+      'b.den_i1': '下一 chunk 首轮（KV finalize 后立即开始）',
+      'b.dec_i': '七路 VAE 解码（latent 就绪即开始）',
+      'b.bnd': '末帧重编码（跨 chunk 边界）',
+      'b.dec_i1': '七路 VAE 解码（请求 i + 1）',
+      'b.send_i': '状态提交后编码并发送（请求 i）',
+      'b.send_i1': 'AV1 编码并发送（请求 i + 1）',
+    } as Record<string, string>,
+    caption: '图 7. 解码后释放（a）与状态提交后释放（b）的流水线时序。',
+    aria: '共用时间轴的两组时序示意，分 DiT GPU、Codec GPU 和 CPU 三条通道。解码后释放时，DiT 要等解码 i 结束才开始去噪 i + 1；状态提交后释放时，去噪 i + 1 紧接 KV finalize 开始，Codec GPU 同时解码请求 i。',
+  },
+}[lang];
+
+const X0 = 96, X1 = 748, SPAN = 83, H = 24, PITCH = 46;
+const TOP: Record<Panel, number> = { a: 28, b: 212 }, TITLE: Record<Panel, number> = { a: 14, b: 178 };
+const sx = (t: number) => +(X0 + (X1 - X0) * t / SPAN).toFixed(2);
+const top = (p: Panel, lane: number) => TOP[p] + lane * PITCH;
+const COLORS: Record<Kind, string> = { den: '#2a78d6', kv: '#eb6834', wait: '#b9c0ca', dec: '#1baf7a', bnd: '#3f8f4a', send: '#b9c0ca' };
+
+const spec: [Panel, string, Kind, number, number, number][] = [
+  ['a', 'den_i', 'den', 0, 0, 20], ['a', 'kv', 'kv', 0, 20, 27], ['a', 'wait', 'wait', 0, 27, 41], ['a', 'den_i1', 'den', 0, 41, 61],
+  ['a', 'dec_i', 'dec', 1, 27, 41], ['a', 'bnd', 'bnd', 1, 43, 52], ['a', 'dec_i1', 'dec', 1, 61, 73],
+  ['a', 'send_i', 'send', 2, 41, 50], ['a', 'send_i1', 'send', 2, 73, 82],
+  ['b', 'den_i', 'den', 0, 0, 20], ['b', 'kv', 'kv', 0, 20, 27], ['b', 'den_i1', 'den', 0, 27, 47],
+  ['b', 'dec_i', 'dec', 1, 20, 34], ['b', 'bnd', 'bnd', 1, 36, 45], ['b', 'dec_i1', 'dec', 1, 47, 59],
+  ['b', 'send_i', 'send', 2, 34, 43], ['b', 'send_i1', 'send', 2, 59, 68],
+];
+const blocks = spec.map(([panel, key, kind, lane, t0, t1]) => {
+  const next = key.endsWith('i1'), x = sx(t0), w = sx(t1) - x, y = top(panel, lane);
+  const style = kind === 'wait' ? 'wait' : next ? 'tint' : kind === 'send' ? 'pale' : 'solid';
+  return { panel, key, kind, x, w, y, cx: x + w / 2, color: COLORS[kind], style, req: kind === 'send' ? '' : key.endsWith('_i') ? 'i' : next ? 'i1' : '' };
+});
+
+const head = (x: number, y: number, dx: number, dy: number) => {
+  const bx = x - dx * 5.5, by = y - dy * 5.5;
+  return `M ${bx - dy * 3.2} ${by + dx * 3.2} L ${x} ${y} L ${bx + dy * 3.2} ${by - dx * 3.2} Z`;
+};
+const down = (p: Panel, t: number, lane: number) => {
+  const x = sx(t), y0 = top(p, lane) + H + 1, y1 = top(p, lane + 1) - 1;
+  return { d: `M ${x} ${y0} V ${y1 - 4}`, head: head(x, y1, 0, 1) };
+};
+const up = (p: Panel, t: number, lane: number) => {
+  const x = sx(t), y0 = top(p, lane) - 1, y1 = top(p, lane - 1) + H + 1;
+  return { d: `M ${x} ${y0} V ${y1 + 4}`, head: head(x, y1, 0, -1) };
+};
+const right = (p: Panel, t0: number, t1: number, lane: number) => {
+  const y = top(p, lane) + H / 2, x0 = sx(t0) + 1, x1 = sx(t1) - 1;
+  return { d: `M ${x0} ${y} H ${x1 - 4}`, head: head(x1, y, 1, 0) };
+};
+const commitY = top('b', 2) + H + 10, commitX = sx(34) + 10;
+const commit = { d: `M ${sx(27)} ${TOP.b - 18} V ${commitY} H ${commitX} V ${commitY - 5}`, head: head(commitX, top('b', 2) + H + 1, 0, -1) };
+const arrows: { panel: Panel; sched: boolean; ends: string; d: string; head: string }[] = [
+  { panel: 'a', sched: false, ends: 'kv dec_i', ...down('a', 27, 0) },
+  { panel: 'a', sched: true, ends: 'dec_i wait den_i1', ...up('a', 41, 1) },
+  { panel: 'a', sched: false, ends: 'dec_i bnd', ...right('a', 41, 43, 1) },
+  { panel: 'a', sched: false, ends: 'dec_i send_i', ...down('a', 41, 1) },
+  { panel: 'a', sched: false, ends: 'bnd dec_i1', ...right('a', 52, 61, 1) },
+  { panel: 'a', sched: false, ends: 'den_i1 dec_i1', ...down('a', 61, 0) },
+  { panel: 'a', sched: false, ends: 'dec_i1 send_i1', ...down('a', 73, 1) },
+  { panel: 'b', sched: false, ends: 'den_i dec_i', ...down('b', 20, 0) },
+  { panel: 'b', sched: true, ends: 'kv den_i1 send_i', ...commit },
+  { panel: 'b', sched: false, ends: 'dec_i bnd', ...right('b', 34, 36, 1) },
+  { panel: 'b', sched: false, ends: 'dec_i send_i', ...down('b', 34, 1) },
+  { panel: 'b', sched: false, ends: 'bnd dec_i1', ...right('b', 45, 47, 1) },
+  { panel: 'b', sched: false, ends: 'den_i1 dec_i1', ...down('b', 47, 0) },
+  { panel: 'b', sched: false, ends: 'dec_i1 send_i1', ...down('b', 59, 1) },
+];
+const AXIS = top('b', 2) + H + 26, height = AXIS + 18;
+const tips = blocks.map(b => text.tips[`${b.panel}.${b.key}`]);
+---
+<figure class="article-figure ifig" id={id}>
+  <pipeline-schedule>
+    <div class="ifig-bar">
+      <p class="ifig-stats"><span class="dep"></span>{text.data}<span class="dep sched"></span>{text.sched}</p>
+    </div>
+    <svg viewBox={`0 0 760 ${height}`} role="img" aria-label={text.aria}>
+      <defs>
+        <pattern id={`${id}-hatch`} width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+          <rect width="6" height="6" fill="#f6f7f9" /><line x1="0" y1="0" x2="0" y2="6" stroke="#c4cad3" stroke-width="1.2" />
+        </pattern>
+      </defs>
+      {(['a', 'b'] as const).map(p => (
+        <g>
+          <text class="panel" x="0" y={TITLE[p]}>{text.panels[p]}</text>
+          {text.lanes.map((name, lane) => (
+            <g>
+              <line class="lane-line" x1={X0} x2={X1} y1={top(p, lane) + H / 2} y2={top(p, lane) + H / 2} />
+              <text class="lane" x={X0 - 12} y={top(p, lane) + 16} text-anchor="end">{name}</text>
+            </g>
+          ))}
+        </g>
+      ))}
+      <text class="mark" x={sx(20) - 4} y={TOP.b - 8} text-anchor="end">{text.latent}</text>
+      <text class="mark" x={sx(27) + 5} y={TOP.b - 8}>{text.commit}</text>
+      {arrows.map(a => (
+        <g class={a.sched ? 'arrow sched' : 'arrow'} data-panel={a.panel} data-ends={a.ends}>
+          <path d={a.d} /><path class="head" d={a.head} />
+        </g>
+      ))}
+      {blocks.map((b, i) => (
+        <g class={`block ${b.style} ${b.kind}`} data-i={i} data-panel={b.panel} data-k={b.key}>
+          <rect x={b.x} y={b.y} width={b.w} height={H} rx="2" fill={b.style === 'wait' ? `url(#${id}-hatch)` : b.color} stroke={b.style === 'solid' ? 'none' : b.color} />
+          {b.kind === 'kv'
+            ? <text x={b.cx} y={b.y + 10}><tspan x={b.cx}>KV</tspan><tspan x={b.cx} dy="10">finalize</tspan></text>
+            : <text x={b.cx} y={b.y + 16}>{b.req ? `${text.names[b.kind]} ` : text.names[b.kind]}{b.req && <tspan font-style="italic">i</tspan>}{b.req === 'i1' ? ' + 1' : ''}</text>}
+        </g>
+      ))}
+      <g class="axis">
+        <line x1={X0} x2={X1} y1={AXIS} y2={AXIS} /><path d={head(X1 + 4, AXIS, 1, 0)} />
+        <text class="axis-label" x={X1 + 4} y={AXIS + 14} text-anchor="end">{text.time}</text>
+      </g>
+    </svg>
+    <div class="ifig-foot"><output class="ifig-readout" aria-live="polite"></output></div>
+    <script type="application/json" set:html={JSON.stringify(tips)}></script>
+  </pipeline-schedule>
+  <figcaption>{text.caption}</figcaption>
+</figure>
+
+<style>
+  pipeline-schedule { display: block; }
+  .ifig-stats { margin: 0; }
+  .dep { display: inline-block; width: 18px; margin: 0 6px 0 14px; vertical-align: middle; border-top: 1.5px solid #59606b; }
+  .dep:first-child { margin-left: 0; }
+  .dep.sched { border-top-style: dashed; }
+  .panel { font-size: 12px; font-weight: 600; fill: var(--ink); }
+  .lane { font-size: 11.5px; fill: var(--muted); }
+  .lane-line { stroke: var(--line); stroke-width: 1; }
+  .mark { font-size: 10px; fill: var(--muted); }
+  .block { transition: opacity 160ms ease; }
+  .block text { font-size: 11px; text-anchor: middle; fill: var(--ink); pointer-events: none; }
+  .block.kv text { font-size: 9.5px; }
+  .block.solid text { fill: white; }
+  .block.tint rect { fill-opacity: .16; stroke-opacity: .5; }
+  .block.tint.send rect { fill-opacity: .35; }
+  .block.wait rect { stroke: #b9c0ca; }
+  .block.wait text { fill: var(--muted); }
+  .arrow { transition: opacity 160ms ease; }
+  .arrow path { fill: none; stroke: #59606b; stroke-width: 1.2; }
+  .arrow path.head { fill: #59606b; stroke: none; }
+  .arrow.sched path:not(.head) { stroke-dasharray: 3 2.5; }
+  .dim { opacity: .2; }
+  .arrow.on path { stroke: var(--ink); stroke-width: 1.5; }
+  .arrow.on path.head { fill: var(--ink); stroke: none; }
+  .axis line { stroke: #9aa1ab; stroke-width: 1; }
+  .axis path { fill: #9aa1ab; }
+</style>
+
+<script>
+  import { tooltip } from '../../scripts/tooltip';
+
+  class PipelineSchedule extends HTMLElement {
+    connectedCallback() {
+      const tips: string[] = JSON.parse(this.querySelector('script[type="application/json"]')!.textContent!);
+      const blocks = [...this.querySelectorAll<SVGGElement>('.block')];
+      const arrows = [...this.querySelectorAll<SVGGElement>('.arrow')];
+      const tip = tooltip(this);
+      const focus = (block?: SVGGElement) => {
+        const panel = block?.dataset.panel, linked = new Set([block?.dataset.k]);
+        arrows.forEach(arrow => {
+          const ends = arrow.dataset.ends!.split(' ');
+          const on = arrow.dataset.panel === panel && ends.includes(block!.dataset.k!);
+          arrow.classList.toggle('on', on);
+          arrow.classList.toggle('dim', arrow.dataset.panel === panel && !on);
+          if (on) ends.forEach(end => linked.add(end));
+        });
+        blocks.forEach(b => b.classList.toggle('dim', b.dataset.panel === panel && !linked.has(b.dataset.k)));
+      };
+      blocks.forEach(block => {
+        const line = tips[Number(block.dataset.i)];
+        block.addEventListener('pointerenter', () => focus(block));
+        if (line) block.addEventListener('pointermove', event => tip.show(line, event));
+        block.addEventListener('pointerleave', () => { focus(); tip.hide(); });
+      });
+    }
+  }
+  customElements.define('pipeline-schedule', PipelineSchedule);
+</script>
